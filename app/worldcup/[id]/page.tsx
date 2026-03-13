@@ -27,11 +27,21 @@ export default function WorldcupDetailPage() {
 
   useEffect(() => {
     const fetchData = async () => {
-      // 실제 구현 시에는 worldcups 테이블에서 가져오겠지만, 
-      // 현재는 데모를 위해 캐시나 최근 생성 데이터 시뮬레이션
+      // 1. 조회수 증가 (RPC)
+      supabase.rpc('increment_worldcup_view', { target_id: id });
+
+      // 2. 데이터 가져오기 (Profiles 조인)
       const { data, error } = await supabase
         .from('worldcups')
-        .select('*, profiles(*)')
+        .select(`
+          *,
+          profiles:creator_id (
+            nickname,
+            is_plus_subscriber,
+            is_creator,
+            creator_grade
+          )
+        `)
         .eq('id', id)
         .single()
 
@@ -43,35 +53,20 @@ export default function WorldcupDetailPage() {
           creator: data.profiles?.nickname || '알 수 없는 유저',
           creatorId: data.creator_id,
           isPlus: data.profiles?.is_plus_subscriber || false,
-          isCreator: data.profiles?.is_creator || false,
+          isCreator: data.profiles?.is_creator || true,
           creatorGrade: data.profiles?.creator_grade || 'Bronze',
-          plays: data.play_count || 0,
+          plays: data.total_plays || 0,
+          views: data.total_views || 0,
           participants: data.participant_count || 0,
           likes: data.like_count || 0,
-          unlikes: data.dislike_count || 0,
+          unlikes: data.unlike_count || 0,
           thumb: data.thumbnail_url || 'https://images.unsplash.com/photo-1574629810360-7efbbe195018?w=800',
           category: data.category || '기타',
+          score: data.score || 0,
           emoji: '🏆'
         })
-      } else {
-        // Fallback for demo if DB record doesn't exist yet
-        setDetail({
-          id,
-          title: '방금 생성된 월드컵',
-          desc: '데이터를 불러오는 중이거나 아직 등록되지 않았습니다.',
-          creator: 'Creator',
-          creatorId: 'demo-id',
-          isPlus: true,
-          isCreator: true,
-          creatorGrade: 'Silver',
-          plays: 0,
-          participants: 0,
-          likes: 0,
-          unlikes: 0,
-          thumb: 'https://images.unsplash.com/photo-1574629810360-7efbbe195018?w=800',
-          category: '신규',
-          emoji: '✨'
-        })
+      } else if (error) {
+        console.error('Data fetch error:', error)
       }
       setLoading(false)
     }
@@ -85,7 +80,21 @@ export default function WorldcupDetailPage() {
     </div>
   )
 
-  if (!detail) return null
+  if (!detail && !loading) return (
+    <div className="min-h-screen flex flex-col items-center justify-center gap-6 p-6 text-center">
+      <div className="w-24 h-24 bg-zinc-100 dark:bg-zinc-900 rounded-full flex items-center justify-center text-4xl mb-4">
+        🔍
+      </div>
+      <h2 className="text-2xl font-black">월드컵을 찾을 수 없습니다</h2>
+      <p className="text-zinc-500 max-w-md">
+        존재하지 않거나 삭제된 월드컵일 수 있습니다.<br />
+        방금 만드셨다면 DB 반영까지 잠시만 기다려주세요!
+      </p>
+      <Link href="/worldcup" className="px-8 py-3 bg-violet-600 text-white font-bold rounded-2xl hover:scale-105 transition-all">
+        목록으로 돌아가기
+      </Link>
+    </div>
+  )
 
   return (
     <div className="min-h-screen bg-background">
@@ -133,10 +142,15 @@ export default function WorldcupDetailPage() {
             </div>
             <div className="w-px h-8 bg-black/10 dark:bg-white/10" />
             <div className="text-center">
+              <p className="text-zinc-500 text-xs font-bold uppercase tracking-wider mb-1">VIEWS</p>
+              <p className="text-2xl font-black text-foreground">{detail.views.toLocaleString()}</p>
+            </div>
+            <div className="w-px h-8 bg-black/10 dark:bg-white/10" />
+            <div className="text-center">
               <p className="text-zinc-500 text-xs font-bold uppercase tracking-wider mb-1">CREATOR</p>
               <div className="flex items-center gap-2 leading-tight">
                 <div className="w-9 h-9 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-sm font-bold text-zinc-400 border border-black/5 dark:border-white/5">
-                  {detail.creator[0]}
+                  {(detail.creator && detail.creator[0]) || '?'}
                 </div>
                 {detail.isCreator && (
                   <CreatorBadge 
@@ -158,7 +172,10 @@ export default function WorldcupDetailPage() {
           </div>
 
           <div className="flex items-center gap-3 w-full md:w-auto">
-            <button className="flex-1 md:flex-none flex items-center justify-center gap-3 px-8 py-4 bg-[var(--accent-1)] text-white rounded-2xl font-black text-xl shadow-lg shadow-[var(--accent-1)]/20 hover:scale-105 active:scale-95 transition-all">
+            <button 
+              onClick={() => router.push(`/worldcup/${id}/play`)}
+              className="flex-1 md:flex-none flex items-center justify-center gap-3 px-8 py-4 bg-[var(--accent-1)] text-white rounded-2xl font-black text-xl shadow-lg shadow-[var(--accent-1)]/20 hover:scale-105 active:scale-95 transition-all"
+            >
               <Play className="w-6 h-6 fill-current" />
               시작하기
             </button>
@@ -171,7 +188,14 @@ export default function WorldcupDetailPage() {
                 <Settings className="w-6 h-6" />
               </button>
             )}
-            <button className="w-14 h-14 flex items-center justify-center rounded-2xl bg-white dark:bg-zinc-900 border border-black/5 dark:border-white/5 text-zinc-500 hover:text-foreground transition-all">
+            <button 
+              onClick={() => {
+                const url = window.location.href;
+                navigator.clipboard.writeText(url);
+                alert("링크가 복사되었습니다!");
+              }}
+              className="w-14 h-14 flex items-center justify-center rounded-2xl bg-white dark:bg-zinc-900 border border-black/5 dark:border-white/5 text-zinc-500 hover:text-foreground transition-all"
+            >
               <Share2 className="w-6 h-6" />
             </button>
           </div>
@@ -185,8 +209,8 @@ export default function WorldcupDetailPage() {
               랭킹 정보
             </h3>
             <p className="text-zinc-500 text-sm">
-              이 월드컵은 현재 전체 랭킹 <span className="text-white font-bold">#4</span>위이며, 
-              이번 주에만 1.2k 플레이를 기록했습니다.
+              이 월드컵의 현재 랭킹 점수는 <span className="text-foreground font-bold">{Math.floor(detail.score)}</span>점이며, 
+              조회수와 추천을 기반으로 실시간 산정됩니다.
             </p>
           </div>
           <div className="bg-white dark:bg-black p-6 rounded-3xl border border-black/5 dark:border-white/10">

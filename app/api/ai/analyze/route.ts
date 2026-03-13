@@ -1,23 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { fetchYouTubeMetadata } from '@/utils/youtube'
+import { getGeminiConfig, extractJsonFromAi } from '@/lib/gemini'
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
   let title = '제목 없음'
   try {
-    const { metadata: clientMetadata, bypassCache = false } = await req.json()
+    const { metadata: clientMetadata, bypassCache: rawBypassCache = false, items = [] } = await req.json()
+    const bypassCache = rawBypassCache === true || rawBypassCache === 'true';
     let { videoCategoryId, topicDetails, tags, videoId } = clientMetadata
     title = clientMetadata.title || title
 
-    const GEMINI_API_KEY = process.env.GEMINI_API_KEY
-    if (!GEMINI_API_KEY) {
-      console.error('GEMINI_API_KEY is missing.')
-      return NextResponse.json({ error: 'AI 서비스가 준비되지 않았습니다.' }, { status: 503 })
-    }
-
-    // 0. 서버 사이드 YouTube 메타데이터 보완
+    // 0. 유튜브 데이터 보완 (비어있는 정보 채우기)
     if (videoId && (!videoCategoryId || !tags || tags.length === 0)) {
       const enriched = await fetchYouTubeMetadata(videoId)
       if (enriched) {
@@ -30,7 +26,7 @@ export async function POST(req: NextRequest) {
 
     const supabase = await createClient()
 
-    // 1. 사용자 구독 상태 확인
+    // 1. 사용자 구독 상태 확인 (유료인지 무료인지)
     const { data: { user: authUser } } = await supabase.auth.getUser()
     let isPlus = false
     if (authUser) {
@@ -42,10 +38,13 @@ export async function POST(req: NextRequest) {
       isPlus = profile?.is_plus_subscriber ?? false
     }
 
-    // 2. 캐시 식별자
-    const cacheKey = videoId || `hash:${title.replace(/\s+/g, '')}`
+    // 2. [교정 완료] 중앙 제어실에서 모델 설정 가져오기
+    // 유료면 'plus', 아니면 'standard'라고 명확하게 글자로 알려줍니다.
+    const tier = isPlus ? 'plus' : 'standard';
+    const { modelName, url, headers } = getGeminiConfig(tier);
 
-    // 3. 캐시 조회
+    // 3. 기존에 분석한 적이 있는지 확인 (캐시 로직)
+    const cacheKey = videoId || `hash:${title.replace(/\s+/g, '')}`
     if (!bypassCache) {
       try {
         const { data: cachedData } = await supabase
@@ -59,62 +58,59 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({
             ...cachedData.result_json,
             cached: true,
-            model: isPlus ? 'Gemini 3 Pro (Cached)' : 'Gemini 3 Flash (Cached)'
+            model: `${modelName} (Cached)`
           })
         }
       } catch (e) {
-        console.warn('Cache lookup skipped.');
+        console.warn('캐시 조회 실패, 새로 분석합니다.');
       }
     }
 
-    // 4. [수정] 최신 Gemini 3 모델로 변경
-    // 구글의 최신 엔진인 gemini-3-flash와 gemini-3-pro를 사용합니다.
-    const modelName = isPlus ? 'gemini-3-pro' : 'gemini-3-flash'
-    const finalGeminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${GEMINI_API_KEY}`
+    // 4. AI에게 시킬 일 (프롬프트) 준비
+    const systemInstruction = `당신은 '월드커비'의 수석 마케터이자 콘텐츠 분석가입니다. 
+유튜브 데이터를 분석하여 유저들이 열광할만한 월드컵을 기획하세요. 
+반드시 다음 JSON 규격을 엄격히 지켜 응답하십시오 (필드명 변경 금지):
 
-    // 5. 시스템 프롬프트
-    const systemInstruction = `
-      당신은 '월드커비'의 수석 마케터이자 콘텐츠 분석가입니다. 
-      유튜브 데이터를 분석하여 유저들이 열광할만한 월드컵을 기획하세요.
+{
+  "determined_genre": "장르 이름 (예: 버츄얼 아이돌 커버곡)",
+  "sub_tags": ["#태그1", "#태그2"],
+  "identity": "이 월드컵의 한 줄 정의",
+  "public_reaction": "대중 및 팬들의 예상 반응 분석",
+  "suitability_reason": "이 월드컵이 왜 경쟁력이 있는지 설명",
+  "word_cloud": ["키워드1", "키워드2", "키워드3"],
+  "is_vs_mode": true,
+  "confidence_score": 95,
+  "recommended_titles": ["추천 제목 1", "추천 제목 2"]
+}`
+    const prompt = `당신은 토너먼트 형식의 '월드컵' 기획자입니다. 
+분석 대상 데이터:
+제목: ${title}
+카테고리: ${videoCategoryId}
+태그: ${tags?.join(', ')}
+조회수: ${clientMetadata.viewCount || 'N/A'}
+댓글반응: ${clientMetadata.topComments?.join(' | ') || 'N/A'}
+현재 선택된 후보 목록: ${items.length > 0 ? items.map((it: any) => it.title).join(', ') : '전체 분석'}
 
-      [규칙]
-      1. 반드시 JSON 형식으로만 응답하십시오.
-      2. recommended_titles는 반드시 3개의 서로 다른 스타일(자극적, 직관적, 감성적) 제목을 포함해야 합니다.
-      3. search_keywords는 후보 영상을 찾기 위한 최적의 검색어 5개입니다.
-    `
+(참고: 후보 목록이 제공된 경우, 제외된 후보를 분석에서 배제하고 현재 후보들의 특성에 맞춰 장르와 전략을 정교하게 다듬어주세요.)`
 
-    const prompt = `
-      [분석 대상 데이터]
-      제목: ${title}
-      카테고리 ID: ${videoCategoryId}
-      태그: ${tags?.join(', ')}
-      조회수: ${clientMetadata.viewCount || 'N/A'}, 좋아요: ${clientMetadata.likeCount || 'N/A'}
-      핵심 댓글 반응: ${clientMetadata.topComments?.join(' | ') || 'N/A'}
-    `
-
-    // 6. Gemini 호출
+    // 5. 구글 제미니 호출
     let response: Response | null = null
     let retryCount = 0
     const maxRetries = 2
 
     while (retryCount <= maxRetries) {
-      response = await fetch(finalGeminiUrl, {
+      response = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           contents: [{ parts: [{ text: `${systemInstruction}\n\n${prompt}` }] }],
-          generationConfig: {
-            response_mime_type: "application/json",
-            temperature: 0.75,
-          }
+          generationConfig: { response_mime_type: "application/json", temperature: 0.7 }
         })
       })
 
       if (response.ok) break;
-
       if (response.status === 429 && retryCount < maxRetries) {
-        const delay = Math.pow(2, retryCount) * 1500;
-        await new Promise(resolve => setTimeout(resolve, delay));
+        await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount) * 1500));
         retryCount++;
         continue;
       }
@@ -122,27 +118,50 @@ export async function POST(req: NextRequest) {
     }
 
     if (!response || !response.ok) {
-      if (response?.status === 429) throw new Error('QUOTA_EXHAUSTED');
-      throw new Error(`AI_API_ERROR: ${response?.status}`);
+      throw new Error(`AI API 서버 응답 실패: ${response?.status}`);
     }
 
     const aiResultRaw = await response.json()
-    const candidates = aiResultRaw.candidates
+    const aiText = aiResultRaw.candidates?.[0]?.content?.parts?.[0]?.text
 
-    if (!candidates || candidates.length === 0 || !candidates[0].content) {
-      return NextResponse.json(createFallbackResult(title, 'SAFETY_BLOCKED'));
+    if (!aiText) {
+      return NextResponse.json(createFallbackResult(title, 'AI 응답 없음'));
     }
 
-    const aiText = candidates[0].content.parts[0].text
-    let aiResultJson;
-    try {
-      const cleanJson = aiText.replace(/```json\n?|```/g, '').trim();
-      aiResultJson = JSON.parse(cleanJson);
-    } catch (e) {
-      throw new Error('INVALID_AI_JSON');
+    // 6. 데이터 깔끔하게 정리 (JSON 추출)
+    let aiResultJson = extractJsonFromAi(aiText);
+    if (!aiResultJson) throw new Error('데이터 형식 오류');
+
+    // [보정 로직] AI가 "0" 또는 다른 키로 감싸서 보내는 경우 처리
+    if (aiResultJson["0"]) aiResultJson = aiResultJson["0"];
+    
+    // [보정 로직 2] 필드명이 다를 경우 매핑 (Planner 형식 대응)
+    if (!aiResultJson.identity && aiResultJson.project_name) {
+      aiResultJson.identity = aiResultJson.project_name;
+    }
+    if (!aiResultJson.public_reaction && aiResultJson.analysis_summary?.market_trend) {
+      aiResultJson.public_reaction = aiResultJson.analysis_summary.market_trend;
+    }
+    if (!aiResultJson.suitability_reason && aiResultJson.marketing_strategy?.expected_effect) {
+      aiResultJson.suitability_reason = aiResultJson.marketing_strategy.expected_effect;
+    }
+    if (!aiResultJson.determined_genre && aiResultJson.analysis_summary?.focus_point) {
+      aiResultJson.determined_genre = aiResultJson.analysis_summary.focus_point;
+    }
+    if (!aiResultJson.recommended_titles && aiResultJson.world_cup_plan?.title) {
+        aiResultJson.recommended_titles = [aiResultJson.world_cup_plan.title];
+    }
+    if (!aiResultJson.sub_tags && aiResultJson.analysis_summary?.keyword_strategy) {
+        aiResultJson.sub_tags = aiResultJson.analysis_summary.keyword_strategy.map((k: string) => `#${k}`);
+    }
+    if (!aiResultJson.word_cloud && aiResultJson.analysis_summary?.keyword_strategy) {
+        aiResultJson.word_cloud = aiResultJson.analysis_summary.keyword_strategy;
+    }
+    if (!aiResultJson.confidence_score) {
+        aiResultJson.confidence_score = 92; // Default if missing
     }
 
-    // 7. 결과 저장
+    // 7. 다음번을 위해 분석 결과 저장
     try {
       await supabase.from('ai_analysis_cache').upsert({
         video_id_hash: cacheKey,
@@ -154,15 +173,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ...aiResultJson, cached: false, model: modelName })
 
   } catch (error: any) {
-    console.error('>>> AI Route Exception:', error.message);
+    console.error('>>> 분석 중 에러 발생:', error.message);
     return NextResponse.json(createFallbackResult(title, error.message));
   }
 }
 
+// 에러 났을 때 보여줄 임시 결과
 function createFallbackResult(title: string, reason: string) {
   return {
     identity: `'${title}' 기반 콘텐츠`,
-    public_reaction: '분석 서비스를 일시적으로 사용할 수 없습니다.',
+    public_reaction: '서비스를 잠시 사용할 수 없어 기본 모드로 전환합니다.',
     suitability_reason: '수동 모드로 계속 진행할 수 있습니다.',
     determined_genre: '기타',
     sub_tags: ['#수동모드', '#월드커비'],

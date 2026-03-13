@@ -26,7 +26,7 @@ import {
   Play,
   Share2
 } from 'lucide-react'
-import { extractVideoId, extractPlaylistId } from '@/utils/youtube'
+import { extractVideoId, extractPlaylistId } from '@/utils/youtube-helpers'
 import { useAuth } from '@/components/AuthProvider'
 import { useAccent } from '@/components/ThemeProvider'
 import PlusUserBadge from '@/components/PlusUserBadge'
@@ -84,7 +84,30 @@ export default function WorldcupCreatePage() {
   const [analysisProgress, setAnalysisProgress] = useState(0)
   const [isTitleUpgraded, setIsTitleUpgraded] = useState(false)
 
-  const [aiResult, setAiResult] = useState<AIResult | null>(null)
+  // 1. 월드컵 기본 정보 (주인님이 말씀하신 썸네일, 제목 등)
+  const [worldcupData, setWorldcupData] = useState({
+    title: "",
+    description: "",
+    thumbnail_url: "", // 여기서 선택된 썸네일 주소가 저장됩니다.
+    is_public: true,
+  });
+
+  // 2. 주인님이 작성하신 AI 분석 결과 (방금 그 코드!)
+  const [aiResult, setAiResult] = useState<AIResult>({
+    determined_genre: "",
+    sub_tags: [],
+    identity: "",
+    public_reaction: "",
+    suitability_reason: "",
+    word_cloud: [],
+    is_vs_mode: true,
+    search_keywords: [],
+    confidence_score: 0,
+    recommended_titles: []
+  });
+
+  // 3. 댓글 상태 (새로 추가할 기능)
+  const [comments, setComments] = useState([]);
   const [items, setItems] = useState<WorldcupItem[]>([])
   const [teamNames, setTeamNames] = useState({ A: 'Team A', B: 'Team B' })
 
@@ -114,7 +137,9 @@ export default function WorldcupCreatePage() {
   const [isScanningChannel, setIsScanningChannel] = useState(false)
   const [selectedScanItems, setSelectedScanItems] = useState<string[]>([])
 
-  // Smart Loading States
+  // persistence
+  const [showRestoreModal, setShowRestoreModal] = useState(false);
+  const [hasDraft, setHasDraft] = useState(false);
   const [detectedGroup, setDetectedGroup] = useState<string | null>(null)
   const [detectedSong, setDetectedSong] = useState<string | null>(null)
   const [themeColors, setThemeColors] = useState({ primary: '#ef4444', secondary: '#ef4444' })
@@ -136,6 +161,71 @@ export default function WorldcupCreatePage() {
       return () => clearTimeout(timer)
     }
   }, [isAnalyzing, analysisProgress])
+
+  // [추가] 제목 동기화 Enforcement (상태 업데이트 누락 방지)
+  useEffect(() => {
+    if (step === 3 && aiResult?.recommended_titles && aiResult.recommended_titles.length > 0) {
+      const suggestedTitle = aiResult.recommended_titles[0];
+      if (title !== suggestedTitle && suggestedTitle !== '제목 없음' && !isTitleUpgraded) {
+        setTitle(suggestedTitle);
+        setIsTitleUpgraded(true);
+        setTimeout(() => setIsTitleUpgraded(false), 3000);
+      }
+    }
+  }, [aiResult, step]);
+
+  // [Draft] localStorage 실시간 저장
+  useEffect(() => {
+    if (step >= 2 && items.length > 0) {
+      const draft = {
+        title,
+        items,
+        aiResult,
+        teamNames,
+        worldcupData,
+        step
+      };
+      localStorage.setItem('worldcuvi-creation-draft', JSON.stringify(draft));
+    }
+  }, [title, items, aiResult, teamNames, worldcupData, step]);
+
+  // [Draft] 마운트 시 저장본 확인
+  useEffect(() => {
+    const saved = localStorage.getItem('worldcuvi-creation-draft');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed.items?.length > 0 && step === 1) {
+          setHasDraft(true);
+          setShowRestoreModal(true);
+        }
+      } catch (e) {
+        console.error('Draft load failed:', e);
+      }
+    }
+  }, []);
+
+  const restoreDraft = () => {
+    const saved = localStorage.getItem('worldcuvi-creation-draft');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      setTitle(parsed.title || '');
+      setItems(parsed.items || []);
+      setAiResult(parsed.aiResult || null);
+      setTeamNames(parsed.teamNames || { A: 'Team A', B: 'Team B' });
+      setWorldcupData(parsed.worldcupData || { title: "", description: "", thumbnail_url: "", is_public: true });
+      setStep(parsed.step || 3);
+      setGamificationMsg('이전에 작성 중이던 월드컵을 성공적으로 복구했습니다! 💾');
+      setTimeout(() => setGamificationMsg(''), 3000);
+    }
+    setShowRestoreModal(false);
+  };
+
+  const clearDraft = () => {
+    localStorage.removeItem('worldcuvi-creation-draft');
+    setShowRestoreModal(false);
+    setHasDraft(false);
+  };
 
   // [부전승] 자동 계산 로직
   useEffect(() => {
@@ -164,7 +254,7 @@ export default function WorldcupCreatePage() {
     const assignByes = () => {
       const teamA = items.filter(it => it.team === 'A');
       const teamB = items.filter(it => it.team === 'B');
-      
+
       let newItems = [...items].map(it => ({ ...it, isBye: false }));
 
       if (aiResult?.is_vs_mode) {
@@ -173,19 +263,19 @@ export default function WorldcupCreatePage() {
         // 2. 두 팀의 매치 참여 인원수를 동일하게 맞춘다.
         // 매치 참여 인원 (n - totalByesNeeded) = 2 * MatchPairs
         const matchPairs = (n - totalByesNeeded) / 2;
-        
+
         // 각 팀에서 남는 사람들은 부전승
         const aByesCount = Math.max(0, teamA.length - matchPairs);
         const bByesCount = Math.max(0, teamB.length - matchPairs);
 
         const shuffle = (arr: any[]) => [...arr].sort(() => Math.random() - 0.5);
-        
+
         const aIndices = newItems.reduce((acc, it, idx) => it.team === 'A' ? [...acc, idx] : acc, [] as number[]);
         const bIndices = newItems.reduce((acc, it, idx) => it.team === 'B' ? [...acc, idx] : acc, [] as number[]);
-        
+
         const aByesIdx = shuffle(aIndices).slice(0, aByesCount);
         const bByesIdx = shuffle(bIndices).slice(0, bByesCount);
-        
+
         [...aByesIdx, ...bByesIdx].forEach(idx => { newItems[idx].isBye = true; });
       } else {
         // 일반 모드: 전체에서 랜덤 배정
@@ -196,10 +286,10 @@ export default function WorldcupCreatePage() {
       // 상태 변경이 실제로 필요할 때만 업데이트 (무한 루프 방지)
       const currentByeIds = items.filter(it => it.isBye).map(it => it.id).sort().join(',');
       const newByeIds = newItems.filter(it => it.isBye).map(it => it.id).sort().join(',');
-      
+
       if (currentByeIds !== newByeIds) {
         setItems(newItems);
-        setGamificationMsg(n > 16 
+        setGamificationMsg(n > 16
           ? `랜덤 부전승 제도가 적용되었습니다. ${totalByesNeeded}개 항목이 16강으로 직행합니다! ✨`
           : `랜덤 부전승 제도가 적용되었습니다. ${totalByesNeeded}개 항목이 다음 라운드로 직행합니다! ✨`
         );
@@ -209,7 +299,7 @@ export default function WorldcupCreatePage() {
     assignByes();
   }, [items.length, aiResult?.is_vs_mode]);
 
-  const handleStartAnalysis = async (e?: React.FormEvent, overrideVideoId?: string, overrideThumbnail?: string, overrideTitle?: string, bulkItems?: WorldcupItem[]) => {
+  const handleStartAnalysis = async (e?: React.FormEvent, overrideVideoId?: string, overrideThumbnail?: string, overrideTitle?: string, bulkItems?: WorldcupItem[], bypassCache = false) => {
     e?.preventDefault()
 
     // URL에서 ID 추출
@@ -222,6 +312,11 @@ export default function WorldcupCreatePage() {
 
     if (targetVideoId) {
       // 단일 영상이 감지되었으므로 재생목록 호출을 건너뛰고 아래 AI 분석 로직으로 진행
+      // [Title Shield] 초기 제목이 빈 상태면 AI가 더 정확하게 제목을 뽑을 수 있도록 유도
+      if (!title || title === '제목 없음') {
+        const initialTitle = overrideTitle || '유튜브 영상'
+        // setTitle을 미리 하지 않고 AI가 결과로 줄 때까지 기다리거나, briefing 중에는 임시로만 보여줌
+      }
     } else if (playlistIdFromUrl) {
       handlePlaylistFetch(playlistIdFromUrl)
       return
@@ -234,6 +329,9 @@ export default function WorldcupCreatePage() {
     setAnalysisProgress(10)
     setStep(2)
 
+    // [추가] 새로운 분석 시작 전 기존 결과 초기화하여 "내용 안 바뀜" 현상 방지
+    setAiResult(prev => ({ ...prev, recommended_titles: [] }))
+
     try {
       const res = await fetch('/api/ai/analyze', {
         method: 'POST',
@@ -242,7 +340,9 @@ export default function WorldcupCreatePage() {
           metadata: {
             title: overrideTitle || title,
             videoId: targetVideoId,
-          }
+          },
+          items: items, // [추가] 현재 선택된 후보 정보를 넘겨 정교한 정교화(Refine) 유도
+          bypassCache: !!bypassCache
         })
       })
 
@@ -254,12 +354,26 @@ export default function WorldcupCreatePage() {
         setGamificationMsg('AI 분석 한도 초과로 수동 모드로 전환합니다. 직접 월드컵을 완성해 보세요! 🛠️')
       }
 
-      setAiResult(data)
+      // [보정] AI 결과 데이터가 비어있거나 부정확할 경우를 대비한 노멀라이즈
+      const normalizedData: AIResult = {
+        determined_genre: data.determined_genre || data.project_name || "기획된 월드컵",
+        identity: data.identity || (data.analysis_summary?.focus_point) || "AI 콘텐츠 기획",
+        sub_tags: data.sub_tags || (data.marketing_strategy?.viral_tag ? [data.marketing_strategy.viral_tag] : ["#월드커비"]),
+        public_reaction: data.public_reaction || (data.analysis_summary?.market_trend) || "관심을 끌 수 있는 기획입니다.",
+        suitability_reason: data.suitability_reason || (data.marketing_strategy?.expected_effect) || "대중적인 소재로 제작되었습니다.",
+        word_cloud: data.word_cloud || data.sub_tags || [],
+        is_vs_mode: true, // [강제] 월드컵 토너먼트를 위해 항상 VS 모드 레이아웃 활성화
+        search_keywords: data.search_keywords || (data.analysis_summary?.keyword_strategy) || [overrideTitle || title],
+        confidence_score: data.confidence_score || 90,
+        recommended_titles: data.recommended_titles || (data.world_cup_plan?.title ? [data.world_cup_plan.title] : [])
+      }
+
+      setAiResult(normalizedData)
       setAnalysisProgress(100)
 
       // AI Content Marketer: Spicy Title Suggestions
       const videoTitles = items.map(it => it.title)
-      const titlesToAnalyze = videoTitles.length > 0 ? videoTitles : [overrideTitle || title || data.title]
+      const titlesToAnalyze = videoTitles.length > 0 ? videoTitles : [overrideTitle || normalizedData.recommended_titles?.[0] || data.title]
 
       if (titlesToAnalyze.length > 0) {
         fetch('/api/gemini/suggest-title', {
@@ -276,9 +390,8 @@ export default function WorldcupCreatePage() {
                   recommended_titles: spicyTitles
                 }) : prev)
                 setGamificationMsg('수석 마케터 AI가 "도파민 제목"을 직접 추출했습니다! 🔥')
-                setTitle(spicyTitles[0])
-                setIsTitleUpgraded(true)
-                setTimeout(() => setIsTitleUpgraded(false), 3000)
+
+                // [Sync] setTitle is now handled by useEffect for consistency
               }, 1000)
             }
           })
@@ -298,13 +411,41 @@ export default function WorldcupCreatePage() {
         thumbnail: overrideThumbnail || (data && data.thumbnail) || `https://img.youtube.com/vi/${targetVideoId}/hqdefault.jpg`,
         videoId: targetVideoId
       }
-      setItems(bulkItems && bulkItems.length > 0 ? bulkItems : [seedItem])
+      setItems(prev => {
+        const baseItems = bulkItems && bulkItems.length > 0 ? bulkItems : [seedItem];
+        
+        // [중요] 기존 후보가 있다면 중복(videoId) 제거 후 병합 (Incremental Add)
+        const existingVideoIds = new Set(prev.map(it => it.videoId));
+        const newUniqueItems = baseItems.filter(it => !existingVideoIds.has(it.videoId));
+        
+        if (newUniqueItems.length === 0) return prev; // 모두 중복이면 기존 상태 유지
+
+        let finalNewBatch = newUniqueItems;
+
+        // [추가] VS 모드 자동 배분 로직 (대기실에 몰려있는 것을 방지)
+        // 기존 팀 구성 비율을 고려하여 A/B에 균등하게 분배
+        if (data && data.is_vs_mode) {
+          const teamACount = prev.filter(it => it.team === 'A').length;
+          const teamBCount = prev.filter(it => it.team === 'B').length;
+          
+          finalNewBatch = newUniqueItems.map((it, idx) => {
+            // 현재 A팀이 더 적으면 A로, B팀이 적으면 B로, 같으면 번갈아가며
+            const balancedTeam = (teamACount + idx) % 2 === 0 ? 'A' : 'B';
+            return {
+              ...it,
+              team: balancedTeam
+            };
+          });
+        }
+        
+        return [...prev, ...finalNewBatch];
+      });
 
       if (data.confidence_score > 90) {
         setGamificationMsg('AI가 제작자의 의도를 완벽히 파악했습니다! 🎯')
       }
 
-      if (data.is_vs_mode) {
+      if (normalizedData.is_vs_mode) {
         const teamA = items.filter(it => it.team === 'A')
         const teamB = items.filter(it => it.team === 'B')
         const diff = teamA.length - teamB.length
@@ -334,7 +475,17 @@ export default function WorldcupCreatePage() {
         throw new Error('재생목록이 비어있거나 비공개 상태입니다. ⚠️')
       }
 
-      const formatted = data.map((v: any) => ({
+      // [이슈 1 해결] 불도저 필터링: 비공개/삭제된 영상 제거
+      const validVideos = data.filter((v: any) => {
+        if (!v.title) return false;
+        const t = v.title.toLowerCase();
+        return !t.includes('private') &&
+          !t.includes('deleted') &&
+          !t.includes('비공개') &&
+          !t.includes('삭제된');
+      });
+
+      const formatted = validVideos.map((v: any) => ({
         ...v,
         id: `${Date.now()}-${Math.random()}`,
         team: 'Neutral'
@@ -409,11 +560,26 @@ export default function WorldcupCreatePage() {
   }
 
   const handleRefineAI = async () => {
-    setGamificationMsg('수정된 팀 이름을 기반으로 AI가 분석을 정교화하는 중... 🧠')
-    setTimeout(() => {
-      setGamificationMsg('AI가 새로운 팀 컨셉에 맞춰 큐레이션을 최적화했습니다!')
-      setTimeout(() => setGamificationMsg(''), 3000)
-    }, 1500)
+    // 1. 기존 분석 결과 리셋 ("내용 안 바뀜" 방지)
+    setAiResult({
+      determined_genre: "",
+      sub_tags: [],
+      identity: "",
+      public_reaction: "",
+      suitability_reason: "",
+      word_cloud: [],
+      is_vs_mode: true,
+      search_keywords: [],
+      confidence_score: 0,
+      recommended_titles: []
+    })
+
+    const videoId = items[0]?.videoId || extractVideoId(seedUrl)
+    if (videoId) {
+      setGamificationMsg('수석 마케터 AI가 분석을 처음부터 다시 정교화하는 중... 🧠')
+      // 2. bypassCache 옵션을 true로 전달하여 새로운 데이터 강제 요청
+      handleStartAnalysis(undefined, videoId, undefined, title, items, true)
+    }
   }
 
   const handleAddVideo = (video: WorldcupItem) => {
@@ -518,20 +684,57 @@ export default function WorldcupCreatePage() {
     setDetectedSong(null)
 
     // [수정 3] 검색 모달에서 직접 URL 입력 시 즉시 감지 및 추가 로직
-    // 검색 API를 타지 않고 프론트엔드에서 즉시 가로채 할당량 보호 및 속도 향상
+    // [개선] 껍데기만 추가하지 않고, 실제 제목과 채널명을 API에서 가져와서 추가합니다.
     const vid = extractVideoId(q)
     if (vid) {
       console.log('>>> [DEBUG] Direct Video URL detected in search:', vid)
-      const fallbackItem: WorldcupItem = {
-        id: Date.now().toString(),
-        title: '직접 입력한 유튜브 영상', // 제목은 나중에 수정하거나 AI 분석 시 업데이트
-        team: 'Neutral',
-        thumbnail: `https://img.youtube.com/vi/${vid}/hqdefault.jpg`,
-        videoId: vid,
-        channelTitle: 'YouTube'
-      }
-      handleAddVideo(fallbackItem)
       setSearchQuery('')
+
+      // 비동기로 정보를 가져와서 추가
+      fetch(`/api/youtube/video-details?videoId=${vid}`)
+        .then(res => res.json())
+        .then(metadata => {
+          if (metadata.error) throw new Error(metadata.error)
+
+          const realItem: WorldcupItem = {
+            id: Date.now().toString(),
+            title: metadata.title || '유튜브 영상',
+            team: 'Neutral',
+            thumbnail: metadata.thumbnail || `https://img.youtube.com/vi/${vid}/hqdefault.jpg`,
+            videoId: vid,
+            channelTitle: metadata.channelTitle || 'YouTube',
+            channelId: metadata.channelId,
+            publishedAt: metadata.publishedAt
+          }
+          handleAddVideo(realItem)
+        })
+        .catch(err => {
+          console.error('Failed to fetch direct video metadata:', err)
+          // 실패 시 최소한의 정보로라도 추가 (기존 방식 유지)
+          const fallbackItem: WorldcupItem = {
+            id: Date.now().toString(),
+            title: '직접 입력한 유튜브 영상',
+            team: 'Neutral',
+            thumbnail: `https://img.youtube.com/vi/${vid}/hqdefault.jpg`,
+            videoId: vid,
+            channelTitle: 'YouTube'
+          }
+          handleAddVideo(fallbackItem)
+        })
+        .finally(() => {
+          setIsSearching(false)
+        })
+
+      return
+    }
+
+    // [추가] 검색창에서 플레이리스트 URL 감지 시 즉시 가져오기
+    const pid = extractPlaylistId(q)
+    if (pid) {
+      console.log('>>> [DEBUG] Direct Playlist URL detected in search:', pid)
+      setShowSearchModal(false)
+      setSearchQuery('')
+      handlePlaylistFetch(pid)
       setIsSearching(false)
       return
     }
@@ -570,8 +773,18 @@ export default function WorldcupCreatePage() {
       const data = await res.json()
       if (data.error) throw new Error(data.error)
 
+      // [이슈 1 해결] 불도저 필터링: 비공개/삭제된 영상 제거
+      const validVideos = data.filter((v: any) => {
+        if (!v.title) return false;
+        const t = v.title.toLowerCase();
+        return !t.includes('private') &&
+          !t.includes('deleted') &&
+          !t.includes('비공개') &&
+          !t.includes('삭제된');
+      });
+
       const selectedChannelIds = new Set(items.map(it => it.channelId).filter(Boolean))
-      const formatted = data.map((v: any, index: number) => ({
+      const formatted = validVideos.map((v: any, index: number) => ({
         ...v,
         id: `${Date.now()}-${Math.random()}-${index}`,
         team: 'Neutral' as const
@@ -672,7 +885,7 @@ export default function WorldcupCreatePage() {
           >
             <form onSubmit={handleStartAnalysis} className="space-y-8">
               <div className="space-y-3">
-                <label className="block text-sm font-black text-zinc-400 uppercase tracking-widest px-1">월드컵 제목</label>
+                <label className="block text-sm font-black text-zinc-600 dark:text-zinc-400 uppercase tracking-widest px-1">월드컵 제목</label>
                 <div className="relative group">
                   <motion.div
                     animate={isTitleUpgraded ? {
@@ -695,8 +908,8 @@ export default function WorldcupCreatePage() {
                       setTitle(e.target.value)
                       setIsTitleUpgraded(false)
                     }}
-                    placeholder="예: 시라유키 히나 최고의 커버곡 월드컵"
-                    className="w-full pl-16 pr-6 py-4 rounded-2xl bg-zinc-50 dark:bg-slate-800 border-2 border-transparent focus:border-violet-600 focus:outline-none transition-all text-xl font-bold relative z-10 shadow-inner"
+                    placeholder="월드컵 제목을 입력해주세요 (예: 시라유키 히나 최고의 커버곡)"
+                    className="w-full pl-16 pr-6 py-4 rounded-2xl bg-white dark:bg-slate-800 border-2 border-zinc-200 dark:border-transparent focus:border-violet-600 focus:outline-none transition-all text-xl font-bold relative z-10 shadow-sm text-zinc-900 dark:text-white placeholder:text-zinc-300 dark:placeholder:text-zinc-600"
                   />
                 </div>
 
@@ -739,7 +952,7 @@ export default function WorldcupCreatePage() {
               </div>
 
               <div className="space-y-3">
-                <label className="block text-sm font-black text-zinc-400 uppercase tracking-widest px-1">씨드 영상 (YouTube URL)</label>
+                <label className="block text-sm font-black text-zinc-600 dark:text-zinc-400 uppercase tracking-widest px-1">씨드 영상 (YouTube URL)</label>
                 <div className="flex gap-4">
                   <div className="relative flex-1">
                     <Youtube className="absolute left-6 top-1/2 -translate-y-1/2 w-6 h-6 text-red-600" />
@@ -748,7 +961,7 @@ export default function WorldcupCreatePage() {
                       value={seedUrl}
                       onChange={(e) => setSeedUrl(e.target.value)}
                       placeholder="유튜브 주소를 붙여넣으세요"
-                      className="w-full pl-16 pr-6 py-5 rounded-2xl bg-zinc-50 dark:bg-slate-800 border-2 border-transparent focus:border-violet-600 focus:outline-none transition-all text-sm font-bold shadow-inner"
+                      className="w-full pl-16 pr-6 py-5 rounded-2xl bg-white dark:bg-slate-800 border-2 border-zinc-200 dark:border-transparent focus:border-violet-600 focus:outline-none transition-all text-sm font-bold shadow-sm text-zinc-900 dark:text-white placeholder:text-zinc-300 dark:placeholder:text-zinc-600"
                     />
                   </div>
                   <motion.button
@@ -863,7 +1076,7 @@ export default function WorldcupCreatePage() {
                   <div>
                     <input
                       type="text"
-                      value={aiResult.determined_genre}
+                      value={aiResult.determined_genre || ""}
                       onChange={(e) => setAiResult({ ...aiResult, determined_genre: e.target.value })}
                       className="bg-zinc-100 dark:bg-white/5 border-none text-3xl font-black mb-2 px-3 py-1 rounded-xl w-full focus:ring-2 ring-violet-500 outline-none transition-all"
                       placeholder="장르 입력"
@@ -977,7 +1190,7 @@ export default function WorldcupCreatePage() {
                       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10 hidden md:flex items-center justify-center w-12 h-12 rounded-full bg-zinc-900 text-white font-black text-xs border-4 border-gray-50 dark:border-black">VS</div>
 
                       {/* Team A */}
-                      <div id="team-a-zone" className="space-y-4 p-4 rounded-3xl border-2 border-dashed border-transparent transition-all group/zone-a hover:border-violet-500/30 hover:bg-violet-500/5">
+                      <div id="team-a-zone" className="space-y-4 p-4 rounded-3xl border-2 border-dashed border-zinc-200 dark:border-zinc-800 transition-all group/zone-a hover:border-violet-500/50 hover:bg-violet-500/5 relative">
                         <div className="flex items-center justify-between px-2">
                           <input
                             type="text"
@@ -995,8 +1208,8 @@ export default function WorldcupCreatePage() {
                       </div>
 
                       {/* Team B */}
-                      <div id="team-b-zone" className="space-y-4 p-4 rounded-3xl border-2 border-dashed border-transparent transition-all group/zone-b hover:border-indigo-500/30 hover:bg-indigo-500/5">
-                        <div className="flex items-center justify-between px-2">
+                      <div id="team-b-zone" className="space-y-4 p-4 rounded-3xl border-2 border-dashed border-zinc-200 dark:border-zinc-800 transition-all group/zone-b hover:border-indigo-500/50 hover:bg-indigo-500/5 relative">
+                        <div className="flex items-center justify-between px-2 flex-row-reverse">
                           <input
                             type="text"
                             value={teamNames.B}
@@ -1020,7 +1233,7 @@ export default function WorldcupCreatePage() {
                           <div className="p-1 px-3 rounded-full bg-zinc-100 dark:bg-zinc-800 text-[10px] font-black text-zinc-400 uppercase tracking-widest">Unassigned</div>
                           <h4 className="text-lg font-black text-zinc-400">대기실 후보 ({items.filter(it => it.team === 'Neutral').length})</h4>
                         </div>
-                        <div id="waiting-room-zone" className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-6 p-4 rounded-3xl border-2 border-dashed border-transparent transition-all hover:border-zinc-400/20 hover:bg-zinc-400/5 pointer-events-none *:pointer-events-auto">
+                        <div id="waiting-room-zone" className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-6 p-4 rounded-3xl border-2 border-dashed border-transparent transition-all hover:border-zinc-400/20 hover:bg-zinc-400/5">
                           {items.filter(it => it.team === 'Neutral').map(item => (
                             <ItemCard key={item.id} item={item} onDelete={handleDeleteItem} onMove={handleMoveItem} />
                           ))}
@@ -1037,34 +1250,130 @@ export default function WorldcupCreatePage() {
                   </div>
                 )}
               </div>
+
+              {/* [추가] 썸네일/배너 선택 섹션 */}
+              <div className="mt-12 bg-white dark:bg-zinc-900 rounded-3xl border border-zinc-200 dark:border-violet-500/20 p-8">
+                <h3 className="text-xl font-black mb-6 flex items-center gap-2">
+                  <Wand2 className="w-5 h-5 text-violet-600" />
+                  대표 썸네일 설정
+                </h3>
+                <div className="flex overflow-x-auto gap-4 pb-4 px-2 scrollbar-thin scrollbar-thumb-violet-500/30 scrollbar-track-transparent snap-x">
+                  {items.map((item) => (
+                    <button
+                      key={item.id}
+                      onClick={() => setWorldcupData({ ...worldcupData, thumbnail_url: item.thumbnail })}
+                      className={`relative flex-shrink-0 aspect-video w-48 md:w-56 rounded-xl overflow-hidden border-4 transition-all snap-start ${worldcupData.thumbnail_url === item.thumbnail
+                        ? "border-violet-600 ring-4 ring-violet-500/20 scale-95"
+                        : "border-zinc-100 dark:border-zinc-800 hover:border-violet-300"
+                        }`}
+                    >
+                      <img src={item.thumbnail} className="w-full h-full object-cover" alt="thumbnail option" />
+                      {worldcupData.thumbnail_url === item.thumbnail && (
+                        <div className="absolute inset-0 bg-violet-600/20 flex items-center justify-center">
+                          <CheckCircle2 className="w-6 h-6 text-white" />
+                        </div>
+                      )}
+                    </button>
+                  ))}
+                </div>
+                {/* 커스텀 배너 입력 (Option) */}
+                <div className="mt-8 pt-8 border-t border-zinc-100 dark:border-zinc-800">
+                  <label className="text-xs font-bold text-zinc-400 mb-2 block uppercase tracking-widest">직접 입력 (Custom Banner URL)</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={worldcupData.thumbnail_url}
+                      onChange={(e) => setWorldcupData({ ...worldcupData, thumbnail_url: e.target.value })}
+                      placeholder="이미지 주소를 직접 입력할 수도 있습니다"
+                      className="flex-1 px-4 py-3 rounded-xl bg-zinc-50 dark:bg-black/20 border border-zinc-200 dark:border-zinc-800 focus:ring-2 ring-violet-500/30 outline-none text-sm"
+                    />
+                    {worldcupData.thumbnail_url && (
+                      <div className="w-12 h-12 rounded-lg overflow-hidden border border-violet-500/50 flex-shrink-0">
+                        <img src={worldcupData.thumbnail_url} className="w-full h-full object-cover" alt="preview" onError={(e) => e.currentTarget.src = 'https://via.placeholder.com/150'} />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
 
             {/* Final Action */}
             <div className="flex flex-col items-center gap-4 pt-12">
               <button
-                disabled={items.length < 4}
+                disabled={items.length < 4 || !worldcupData.thumbnail_url}
                 onClick={async () => {
-                  // 크리에이터 승격 & 페이지 이동
-                  if (user?.id) {
-                    await supabase.from('profiles').update({
-                      is_creator: true,
-                      creator_since: new Date().toISOString(),
-                      creator_grade: 'Bronze'
-                    }).eq('id', user.id)
+                  try {
+                    setIsAnalyzing(true);
+                    setAnalysisProgress(10);
+
+                    // 1. 크리에이터 승격 (기존 로직 유지)
+                    if (user?.id) {
+                      await supabase.from('profiles').update({
+                        is_creator: true,
+                        creator_since: new Date().toISOString(),
+                        creator_grade: 'Bronze'
+                      }).eq('id', user.id)
+                    }
+
+                    setAnalysisProgress(40);
+
+                    // [추가] 사장님 지침에 따른 철저한 유효성 검사
+                    if (!title || title === '제목 없음') throw new Error('월드컵 제목을 입력해주세요! AI 제목을 선택하거나 직접 입력할 수 있습니다. ✍️');
+                    if (items.length < 2) throw new Error('월드컵을 만드려면 최소 2개 이상의 후보가 필요합니다! ➕');
+                    if (!worldcupData.thumbnail_url) {
+                      // 썸네일이 없으면 첫 번째 후보의 썸네일로 자동 지정
+                      if (items[0]) worldcupData.thumbnail_url = items[0].thumbnail;
+                      else throw new Error('월드컵 대표 썸네일을 선택해주세요! 🖼️');
+                    }
+
+                    // 2. RPC를 이용한 원자적 생성 (사장님 스키마에 완벽하게 맞춘 최신 버전!)
+                    const { data: newId, error } = await supabase.rpc('create_worldcup_with_candidates', {
+                      p_title: title,
+                      p_description: aiResult.identity,
+                      p_thumbnail_url: worldcupData.thumbnail_url,
+                      p_category: aiResult.determined_genre, // 👈 아까 스키마에 있던 장르(category) 추가!
+                      p_creator_id: user?.id,
+                      p_candidates: items.map(it => ({       // 👈 p_items 가 아니라 p_candidates 입니다!
+                        title: it.title,
+                        youtube_video_id: it.videoId,        // 👈 사장님 스키마 컬럼명 완벽 일치!
+                        start_time: 0
+                      }))
+                    });
+
+                    if (error) throw error;
+
+                    setAnalysisProgress(80);
+
+                    // 3. 모든 후보 채널 Finalize 트래킹
+                    items.forEach(item => {
+                      trackAction(item.channelId || '', item.channelTitle || '', 'finalize')
+                    })
+
+                    setAnalysisProgress(100);
+
+                    // 4. [Draft] 성공적으로 생성되었으므로 임시 저장 데이터 삭제
+                    localStorage.removeItem('worldcuvi-creation-draft');
+
+                    // 5. 생성된 실제 ID로 이동
+                    router.push(`/worldcup/${newId}`)
+                    router.refresh()
+                  } catch (err: any) {
+                    // 🚨 깡통 객체를 강제로 뜯어서 진짜 메시지를 보여주는 마법의 코드
+                    console.error("Creation failed [상세]:", err.message || JSON.stringify(err, null, 2) || err);
+
+                    // 유저에겐 친절하게, 사장님에겐 정확하게!
+                    alert(`월드컵 생성 중 오류가 발생했습니다.\n사유: ${err.message || "알 수 없는 오류"}`);
+                  } finally {
+                    setIsAnalyzing(false);
                   }
-
-                  // 모든 후보 채널 Finalize 트래킹
-                  items.forEach(item => {
-                    trackAction(item.channelId || '', item.channelTitle || '', 'finalize')
-                  })
-
-                  // 실제 생성된 ID 혹은 데모 ID로 이동
-                  router.push(`/worldcup/test-worldcup-id`)
-                  router.refresh()
                 }}
                 className="px-16 py-6 rounded-[2rem] bg-violet-600 text-white font-black text-2xl shadow-2xl shadow-violet-600/40 hover:scale-105 active:scale-95 transition-all flex items-center gap-4 disabled:opacity-30 disabled:hover:scale-100 disabled:cursor-not-allowed group"
               >
-                <Trophy className="w-8 h-8 fill-current group-hover:rotate-12 transition-transform" />
+                {isAnalyzing ? (
+                  <Loader2 className="w-8 h-8 animate-spin" />
+                ) : (
+                  <Trophy className="w-8 h-8 fill-current group-hover:rotate-12 transition-transform" />
+                )}
                 월드컵 생성하기
               </button>
             </div>
@@ -1231,7 +1540,17 @@ export default function WorldcupCreatePage() {
                         {/* Hover Preview Tooltip */}
                         <div className="absolute -inset-4 z-20 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                           <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-full mb-4 w-[280px] bg-white dark:bg-zinc-800 rounded-2xl shadow-2xl border border-black/10 dark:border-white/10 p-3 scale-90 group-hover:scale-100 transition-transform origin-bottom backdrop-blur-xl">
-                            <img src={video.thumbnail} className="w-full aspect-video rounded-xl object-cover mb-2" alt="preview" />
+                            <img
+                              src={video.thumbnail}
+                              className="w-full aspect-video rounded-xl object-cover mb-2"
+                              alt="preview"
+                              onError={(e) => {
+                                const fallbackSrc = `https://i.ytimg.com/vi/${video.videoId}/hqdefault.jpg`;
+                                if (e.currentTarget.src !== fallbackSrc) {
+                                  e.currentTarget.src = fallbackSrc;
+                                }
+                              }}
+                            />
                             <p className="text-xs font-bold leading-tight line-clamp-2 mb-1">{video.title}</p>
                             <div className="flex items-center justify-between text-[10px] font-black text-zinc-400">
                               <span>{video.publishedAt ? new Date(video.publishedAt).toLocaleDateString() : 'Date N/A'}</span>
@@ -1242,10 +1561,31 @@ export default function WorldcupCreatePage() {
                         </div>
 
                         <div className="relative aspect-video rounded-[1.5rem] overflow-hidden bg-zinc-100 dark:bg-zinc-800 border border-black/5 dark:border-white/5 mb-3 group-hover:shadow-xl transition-all">
-                          <img src={video.thumbnail} alt={video.title} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
+                          <img
+                            src={video.thumbnail}
+                            alt={video.title}
+                            className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+                            onError={(e) => {
+                              const fallbackSrc = `https://i.ytimg.com/vi/${video.videoId}/hqdefault.jpg`;
+                              if (e.currentTarget.src !== fallbackSrc) {
+                                e.currentTarget.src = fallbackSrc;
+                              }
+                            }}
+                          />
                           <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-center justify-center">
                             <Plus className="w-12 h-12 text-white opacity-0 group-hover:opacity-100 transition-all scale-50 group-hover:scale-110" />
                           </div>
+                          {/* [추가] 유튜브 원본 링크 버튼 */}
+                          <a
+                            href={`https://www.youtube.com/watch?v=${video.videoId}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="absolute bottom-3 right-3 w-8 h-8 rounded-xl bg-red-600 hover:bg-red-700 text-white flex items-center justify-center shadow-lg transition-all z-20 opacity-0 group-hover:opacity-100"
+                            title="유튜브에서 보기"
+                          >
+                            <Youtube className="w-4 h-4" />
+                          </a>
                         </div>
                         <div className="px-1">
                           <p className="text-sm font-black line-clamp-2 leading-relaxed group-hover:text-red-600 transition-colors flex items-start gap-1">
@@ -1316,7 +1656,17 @@ export default function WorldcupCreatePage() {
                               : 'border-transparent hover:border-violet-300'
                               }`}
                           >
-                            <img src={v.thumbnail} className="w-full aspect-video object-cover" alt="thumb" />
+                            <img
+                              src={v.thumbnail}
+                              className="w-full aspect-video object-cover"
+                              alt="thumb"
+                              onError={(e) => {
+                                const fallbackSrc = `https://i.ytimg.com/vi/${v.videoId}/hqdefault.jpg`;
+                                if (e.currentTarget.src !== fallbackSrc) {
+                                  e.currentTarget.src = fallbackSrc;
+                                }
+                              }}
+                            />
                             <div className="absolute inset-x-0 bottom-0 p-3 bg-gradient-to-t from-black/80 to-transparent">
                               <p className="text-[10px] font-black text-white line-clamp-2 leading-tight">{v.title}</p>
                             </div>
@@ -1325,6 +1675,17 @@ export default function WorldcupCreatePage() {
                                 <CheckCircle2 className="w-4 h-4" />
                               </div>
                             )}
+                            {/* [추가] 유튜브 원본 링크 버튼 */}
+                            <a
+                              href={`https://www.youtube.com/watch?v=${v.videoId}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              className="absolute bottom-2 right-2 w-7 h-7 rounded-lg bg-red-600 hover:bg-red-700 text-white flex items-center justify-center shadow-lg transition-all z-10 opacity-0 group-hover:opacity-100"
+                              title="유튜브에서 보기"
+                            >
+                              <Youtube className="w-4 h-4" />
+                            </a>
                           </motion.div>
                         ))}
                       </div>
@@ -1451,7 +1812,17 @@ export default function WorldcupCreatePage() {
                       }`}
                   >
                     <div className="aspect-video relative overflow-hidden bg-zinc-200 dark:bg-zinc-800">
-                      <img src={v.thumbnail} className="w-full h-full object-cover" alt="thumb" />
+                      <img
+                        src={v.thumbnail}
+                        className="w-full h-full object-cover"
+                        alt="thumb"
+                        onError={(e) => {
+                          const fallbackSrc = `https://i.ytimg.com/vi/${v.videoId}/hqdefault.jpg`;
+                          if (e.currentTarget.src !== fallbackSrc) {
+                            e.currentTarget.src = fallbackSrc;
+                          }
+                        }}
+                      />
                     </div>
                     <div className="p-3 bg-white dark:bg-zinc-900 border-t border-zinc-100 dark:border-zinc-800">
                       <p className="text-[10px] font-black line-clamp-2 leading-tight h-8">{v.title}</p>
@@ -1461,6 +1832,17 @@ export default function WorldcupCreatePage() {
                         <CheckCircle2 className="w-4 h-4" />
                       </div>
                     )}
+                    {/* [추가] 유튜브 원본 링크 버튼 */}
+                    <a
+                      href={`https://www.youtube.com/watch?v=${v.videoId}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      className="absolute bottom-2 right-2 w-7 h-7 rounded-lg bg-red-600 hover:bg-red-700 text-white flex items-center justify-center shadow-lg transition-all z-10 opacity-0 group-hover:opacity-100"
+                      title="유튜브에서 보기"
+                    >
+                      <Youtube className="w-4 h-4" />
+                    </a>
                   </motion.div>
                 ))}
               </div>
@@ -1597,21 +1979,30 @@ function ItemCard({ item, onDelete, onMove }: {
       layout
       initial="initial"
       whileHover="hover"
+      whileDrag="dragging"
       animate="animate"
       variants={{
         initial: { opacity: 0, scale: 0.9 },
         animate: { opacity: 1, scale: 1 },
         hover: {
-          scale: 1.1,
+          scale: 1.05,
+          zIndex: 40,
           boxShadow: [
             `0 0 0 0px ${accentPrimary}00`,
             `0 0 15px 5px ${accentPrimary}4d`,
             `0 0 0 0px ${accentPrimary}00`
           ]
+        },
+        dragging: {
+          scale: 1.15,
+          zIndex: 100,
+          rotate: 2,
+          boxShadow: "0 20px 40px rgba(0,0,0,0.3)"
         }
       }}
       transition={{
-        boxShadow: { duration: 2, repeat: Infinity, ease: "easeInOut" }
+        boxShadow: { duration: 2, repeat: Infinity, ease: "easeInOut" },
+        scale: { type: "spring", damping: 15 }
       }}
       drag={!!onMove}
       dragConstraints={{ left: 0, right: 0, top: 0, bottom: 0 }}
@@ -1621,20 +2012,45 @@ function ItemCard({ item, onDelete, onMove }: {
         setIsDragging(false)
         if (!onMove) return
 
-        const element = document.elementFromPoint(info.point.x, info.point.y)
-        const zone = element?.closest('[id$="-zone"]') || element?.querySelector('[id$="-zone"]')
+        // [Fix] elementFromPoint 대신 더 확실한 Bounding Rect 체크 사용
+        const x = info.point.x
+        const y = info.point.y
 
-        if (zone) {
-          const zoneId = zone.id
-          if (zoneId === 'team-a-zone' && item.team !== 'A') onMove(item.id, 'A')
-          else if (zoneId === 'team-b-zone' && item.team !== 'B') onMove(item.id, 'B')
-          else if (zoneId === 'waiting-room-zone' && item.team !== 'Neutral') onMove(item.id, 'Neutral')
+        const getZoneUnderPoint = () => {
+          const zones = ['team-a-zone', 'team-b-zone', 'waiting-room-zone']
+          for (const id of zones) {
+            const el = document.getElementById(id)
+            if (!el) continue
+            const rect = el.getBoundingClientRect()
+            // 뷰포트 기준 좌표로 체크 (info.point.x/y는 뷰포트 기준)
+            if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) {
+              return id
+            }
+          }
+          return null
+        }
+
+        const targetZoneId = getZoneUnderPoint()
+        if (targetZoneId) {
+          if (targetZoneId === 'team-a-zone' && item.team !== 'A') onMove(item.id, 'A')
+          else if (targetZoneId === 'team-b-zone' && item.team !== 'B') onMove(item.id, 'B')
+          else if (targetZoneId === 'waiting-room-zone' && item.team !== 'Neutral') onMove(item.id, 'Neutral')
         }
       }}
       className={`group relative aspect-video rounded-[1.5rem] overflow-hidden border transition-all duration-300 bg-zinc-100 dark:bg-slate-800 shadow-lg cursor-grab active:cursor-grabbing hover:z-50 ${isDragging ? 'pointer-events-none z-50 ring-4 ring-violet-500/50' : 'z-20 border-black/5 dark:border-violet-500/30'
         }`}
     >
-      <img src={item.thumbnail} alt={item.title} className="absolute inset-0 w-full h-full object-cover transition-transform duration-500" />
+      <img
+        src={item.thumbnail}
+        alt={item.title}
+        className="absolute inset-0 w-full h-full object-cover transition-transform duration-500"
+        onError={(e) => {
+          const fallbackSrc = `https://i.ytimg.com/vi/${item.videoId}/hqdefault.jpg`;
+          if (e.currentTarget.src !== fallbackSrc) {
+            e.currentTarget.src = fallbackSrc;
+          }
+        }}
+      />
       <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent opacity-60 transition-opacity group-hover:opacity-80" />
       <div className="absolute inset-x-0 bottom-0 p-4 transform translate-y-1 transition-transform group-hover:translate-y-0">
         <p className="text-[10px] font-black text-violet-400 uppercase tracking-widest mb-1 opacity-0 group-hover:opacity-100 transition-opacity">CANDIDATE</p>
@@ -1657,6 +2073,22 @@ function ItemCard({ item, onDelete, onMove }: {
       >
         <X className="w-4 h-4" />
       </motion.button>
+
+      {/* [추가] 유튜브 원본 링크 버튼 */}
+      <motion.a
+        variants={{
+          initial: { opacity: 0, scale: 0.5, x: -10 },
+          hover: { opacity: 1, scale: 1, x: 0 }
+        }}
+        href={`https://www.youtube.com/watch?v=${item.videoId}`}
+        target="_blank"
+        rel="noopener noreferrer"
+        onClick={(e) => e.stopPropagation()}
+        className="absolute bottom-3 right-3 w-8 h-8 rounded-full bg-red-600 hover:bg-red-700 text-white flex items-center justify-center transition-all hover:scale-110 active:scale-90 z-30 shadow-xl border border-white/20"
+        title="유튜브에서 보기"
+      >
+        <Youtube className="w-4 h-4" />
+      </motion.a>
     </motion.div>
   )
 }

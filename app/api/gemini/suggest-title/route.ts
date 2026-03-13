@@ -1,80 +1,92 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@/lib/supabase/server'
+import { getGeminiConfig, extractJsonFromAi } from '@/lib/gemini' // 👈 중앙 제어실 연결
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
   try {
     const { titles } = await req.json()
-    const GEMINI_API_KEY = process.env.GEMINI_API_KEY
 
-    if (!GEMINI_API_KEY) {
-      return NextResponse.json({ error: 'AI 서비스가 준비되지 않았습니다.' }, { status: 503 })
+    // 1. 사용자 구독 상태 확인 (유료 유저에겐 더 똑똑한 모델을 붙여주기 위해)
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    let isPlus = false
+    if (user) {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('is_plus_subscriber')
+        .eq('id', user.id)
+        .single()
+      isPlus = profile?.is_plus_subscriber ?? false
     }
 
-    // 수석 마케터의 자아를 주입하는 시스템 지시문
+    // 2. [교정 완료] 중앙 제어실에서 설정 가져오기
+    // 유료면 'plus', 아니면 'standard' 설정을 자동으로 가져옵니다.
+    const tier = isPlus ? 'plus' : 'standard';
+    const { url, headers } = getGeminiConfig(tier);
+
+    // AI에게 시킬 마케팅 지시문 (UI 구조에 완벽하게 맞춤!)
     const systemInstruction = `
-      당신은 'WorldCuvi(월드커비)'라는 트렌디한 이상형 월드컵 플랫폼의 수석 콘텐츠 마케터야. 
-      유저가 선택한 유튜브 영상들의 '원본 제목' 리스트를 줄 테니, 이걸 분석해서 사람들이 무조건 클릭하고 싶어지는 [자극적이고 힙한 월드컵 제목] 3가지를 제안해.
+      당신은 'WorldCuvi(월드커비)'라는 트렌디한 이상형 월드컵 플랫폼의 수석 콘텐츠 마케터 겸 분석가야. 
+      유저가 선택한 유튜브 영상들의 '원본 제목' 리스트를 줄 테니, 이걸 분석해서 화면 UI에 들어갈 [AI 분석 리포트]를 JSON 형식으로 작성해.
+
+      [필수 JSON 출력 구조] - 반드시 이 키(key)값들을 지켜서 JSON 객체 1개만 반환할 것.
+      {
+        "title": "도파민 터지는 10~25자 월드컵 제목 (예: 고막 녹는 텐코 시부키 YOASOBI)",
+        "genre": "이 월드컵의 메인 장르 및 정체성 한 줄 요약",
+        "reaction": "이 주제에 대한 예상 대중/팬덤의 반응 및 바이럴 포인트 분석",
+        "competitiveness": "이 월드컵이 사람들의 클릭을 유도하는 킬러 포인트와 경쟁력",
+        "confidence": 98 // 0~100 사이의 AI 분석 확신도 (숫자만)
+      }
 
       [조건]
-      1. 밋밋한 설명은 집어치우고, 유튜브 썸네일이나 쇼츠에서 쓸 법한 '도파민 터지는' 문구를 써.
-      2. 길이는 10~25자 사이로 간결하게.
-      3. 상황에 따라 "~ 레전드 매치", "~ 월드컵", "당신의 최애 ~는?", "숨막히는 ~ 대결" 같은 포맷을 적절히 섞어.
-      4. 부가 설명 절대 금지. 오직 결과물만 아래와 같은 JSON 배열 형식으로 딱 떨어지게 출력해.
-
-      [예시 출력]
-      ["🔥 2024년 폼 미친 레전드 드립 월드컵", "당신의 뇌를 지배할 수능 금지곡 매치", "보기만 해도 혈압 오르는 빌런 총집합"]
+      1. 제목(title)은 밋밋한 설명 말고 유튜브 썸네일처럼 자극적이고 힙하게.
+      2. 부가 설명 절대 금지. 오직 JSON 데이터만 출력해.
     `
 
     const prompt = `[입력된 영상 원본 제목들]\n${titles.join(', ')}`
 
-    // [수정] 최신 Gemini 3 Flash 모델로 주소 변경
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash:generateContent?key=${GEMINI_API_KEY}`
-
+    // 3. 구글 제미니 호출
     const response = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({
         contents: [{ parts: [{ text: `${systemInstruction}\n\n${prompt}` }] }],
         generationConfig: {
           response_mime_type: "application/json",
-          temperature: 0.85, // 창의적인 제목을 위해 온도를 살짝 높였습니다.
+          temperature: 0.85, // 창의적인 제목을 위해 온도를 살짝 높임
         }
       })
     })
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(`Gemini API error: ${response.status} - ${JSON.stringify(errorData)}`)
+      throw new Error(`Gemini API 에러: ${response.status}`)
     }
 
     const data = await response.json()
+    const aiText = data.candidates?.[0]?.content?.parts?.[0]?.text
 
-    // AI가 거부했거나 결과가 없을 경우에 대한 방어 로직
-    if (!data.candidates || data.candidates.length === 0) {
+    if (!aiText) {
       throw new Error('AI가 제목을 생성하지 못했습니다.')
     }
 
-    const aiText = data.candidates[0].content.parts[0].text
+    // 4. [교정 완료] 중앙 제어실의 도구로 데이터 깨끗하게 뽑기
+    let result = extractJsonFromAi(aiText);
 
-    // JSON 파싱 (사족 제거 로직 포함)
-    let result;
-    try {
-      const cleanJson = aiText.replace(/```json\n?|```/g, '').trim();
-      result = JSON.parse(cleanJson);
-    } catch (e) {
-      // 파싱 실패 시 원본 제목이라도 배열로 감싸서 반환 (UI 붕괴 방지)
+    // 만약 AI가 헛소리를 해서 추출에 실패하면, 최소한의 기본 제목이라도 돌려줌 (UI 붕괴 방지)
+    if (!result) {
       result = [titles[0] || "제목 없는 월드컵", "새로운 월드컵 매치", "레전드 후보들의 대결"];
     }
 
     return NextResponse.json(result)
 
   } catch (error: any) {
-    console.error('Suggest Title Error:', error)
-    // 에러 발생 시에도 프론트엔드가 배열을 받을 수 있게 폴백 데이터 제공
+    console.error('제목 추천 중 에러 발생:', error)
+    // 에러가 나도 유저가 당황하지 않게 기본 제목 리스트를 반환합니다.
     return NextResponse.json(
       ["내 취향 저격 월드컵", "당신이 선택할 최고의 주인공은?", "레전드 매치 월드컵"],
-      { status: 200 } // 에러지만 유저 경험을 위해 정상 데이터처럼 응답할 수 있습니다.
+      { status: 200 }
     )
   }
 }

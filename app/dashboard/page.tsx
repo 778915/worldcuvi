@@ -13,7 +13,8 @@ import {
   ExternalLink,
   BarChart3,
   Plus,
-  ArrowUpRight
+  ArrowUpRight,
+  Trash2
 } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { createClient } from '@/lib/supabase/client'
@@ -183,7 +184,25 @@ export default function CreatorDashboard() {
                   </Link>
                   <button className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-zinc-900 dark:bg-white text-white dark:text-black font-black text-sm hover:scale-105 active:scale-95 transition-all shadow-lg shadow-zinc-500/10">
                     <Settings className="w-4 h-4" />
-                    수정 및 관리
+                    수정
+                  </button>
+                  <button 
+                    onClick={async () => {
+                      if (!confirm("정말 삭제하시겠습니까? 관련 데이터가 모두 삭제됩니다.")) return;
+                      const { error } = await supabase
+                        .from('worldcups')
+                        .delete()
+                        .eq('id', wc.id);
+                      
+                      if (!error) {
+                        setWorldcups(worldcups.filter(w => w.id !== wc.id));
+                      } else {
+                        alert("삭제 중 오류가 발생했습니다.");
+                      }
+                    }}
+                    className="w-10 h-10 rounded-xl bg-red-500/10 text-red-500 flex items-center justify-center hover:bg-red-500 hover:text-white transition-all border border-red-500/20"
+                  >
+                    <Trash2 className="w-5 h-5" />
                   </button>
                 </div>
               </motion.div>

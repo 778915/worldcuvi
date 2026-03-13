@@ -262,22 +262,6 @@ export async function fetchChannelUploads(channelId: string, maxResults: number 
   return fetchPlaylistItems(uploadsPlaylistId, maxResults)
 }
 
-/**
- * URL 파싱 유틸리티
- */
-export function extractVideoId(url: string): string | null {
-  if (!url) return null
-  const regex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/|youtube\.com\/shorts\/)([^"&?\/\s]{11})/
-  const match = url.match(regex)
-  return match ? match[1] : null
-}
-
-export function extractPlaylistId(url: string): string | null {
-  if (!url) return null
-  const regex = /[?&]list=([^#&?]+)/
-  const match = url.match(regex)
-  return match ? match[1] : null
-}
 
 /**
  * Supabase 캐시 처리 (마스터 권한 적용)

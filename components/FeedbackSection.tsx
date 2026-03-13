@@ -3,6 +3,8 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Zap, ThumbsUp, ThumbsDown } from 'lucide-react'
+import { createClient } from '@/lib/supabase/client'
+import { useAuth } from './AuthProvider'
 import { useUI } from './UIProvider'
 import { useAccent } from './ThemeProvider'
 import './FeedbackSection.css'
@@ -18,36 +20,51 @@ export default function FeedbackSection({
   initialLikes = 0, 
   initialUnlikes = 0 
 }: FeedbackSectionProps) {
+  const { user } = useAuth()
   const [likes, setLikes] = useState(initialLikes)
   const [unlikes, setUnlikes] = useState(initialUnlikes)
   const [vote, setVote] = useState<'like' | 'unlike' | null>(null)
   const [showTooltip, setShowTooltip] = useState(false)
   const { openBoosterModal } = useUI()
   const { accentText } = useAccent()
+  const supabase = createClient()
   const tooltipTimerRef = useRef<NodeJS.Timeout | null>(null)
 
-  const handleFeedback = (type: 'like' | 'unlike') => {
-    // Toggle logic
-    if (vote === type) {
-      setVote(null)
-      if (type === 'like') setLikes(prev => prev - 1)
-      else setUnlikes(prev => prev - 1)
-    } else {
-      // Optimistic Update
-      if (vote === 'like') setLikes(prev => prev - 1)
-      if (vote === 'unlike') setUnlikes(prev => prev - 1)
-
-      setVote(type)
-      if (type === 'like') {
-        setLikes(prev => prev + 1)
-        triggerTooltip()
-      } else {
-        setUnlikes(prev => prev + 1)
-      }
+  const handleFeedback = async (type: 'like' | 'unlike') => {
+    if (!user) {
+      alert("로그인이 필요한 기능입니다.");
+      return;
     }
 
-    // TODO: Supabase RPC call handle_worldcup_feedback(worldcupId, type)
-    console.log(`Voting ${type} for ${worldcupId}`)
+    // Toggle logic (Client-side sync) - Simplification: We favor DB truth
+    // DB will prevent duplicates via UNIQUE constraint in worldcup_feedback_logs
+    try {
+      const { error } = await supabase.rpc('handle_worldcup_feedback', {
+        target_worldcup_id: worldcupId,
+        target_user_id: user.id,
+        is_like: type === 'like'
+      });
+
+      if (error) {
+        if (error.code === '23505') {
+          alert("이미 투표하셨습니다!");
+        } else {
+          throw error;
+        }
+        return;
+      }
+
+      // Success UI update
+      setVote(type);
+      if (type === 'like') {
+        setLikes(prev => prev + 1);
+        triggerTooltip();
+      } else {
+        setUnlikes(prev => prev + 1);
+      }
+    } catch (err) {
+      console.error("Feedback failed:", err);
+    }
   }
 
   const triggerTooltip = () => {
