@@ -1,6 +1,11 @@
+import ytpl from 'ytpl'
+import { createAdminClient } from '@/lib/supabase/server' // [수정] 마스터 키 클라이언트 임포트
+
 /**
- * YouTube Data API v3 관련 유틸리티
- * API Key는 서버에서만 사용되도록 주의
+ * YouTube Data API v3 및 ytpl(크롤링) 통합 유틸리티
+ * 1. API 우선 시도 -> 실패 시 크롤링 비상구 가동
+ * 2. 유튜브 봇 탐지 회피용 위장 헤더 적용
+ * 3. Supabase Admin Client를 통한 RLS 우회 캐싱
  */
 
 const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY
@@ -22,37 +27,88 @@ export interface YouTubeMetadata {
   channelTitle?: string
   subscriberCount?: string
   isOfficial?: boolean
+  recommended_titles?: string[]
 }
 
-export async function fetchYouTubeMetadata(videoId: string): Promise<YouTubeMetadata | null> {
-  if (!YOUTUBE_API_KEY) {
-    console.warn('YOUTUBE_API_KEY is missing.')
-    return null
+/**
+ * [위장복 설정] 유튜브 봇 인식을 피하기 위한 일반 사용자용 헤더
+ */
+const REQUEST_OPTIONS = {
+  headers: {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
+    'Sec-Ch-Ua': '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+    'Sec-Ch-Ua-Mobile': '?0',
+    'Sec-Ch-Ua-Platform': '"Windows"',
+    'Referer': 'https://www.youtube.com/'
   }
+}
+
+/**
+ * 비상용 파서 (oEmbed): API 할당량이 완전히 터졌을 때 제목/썸네일만 긁어옴
+ */
+export async function fetchYouTubeMetadataEmergency(videoId: string): Promise<YouTubeMetadata | null> {
+  try {
+    const thumbnail = `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`
+    const res = await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`)
+    const data = await res.json()
+
+    return {
+      videoId,
+      title: data.title || 'YouTube Video',
+      videoCategoryId: '',
+      topicDetails: {},
+      tags: [],
+      description: '',
+      thumbnail,
+      viewCount: '0',
+      likeCount: '0',
+      commentCount: '0',
+      topComments: [],
+      channelTitle: data.author_name || 'YouTube',
+      isOfficial: false
+    }
+  } catch (e) {
+    return {
+      videoId,
+      title: '영상을 찾을 수 없음',
+      videoCategoryId: '',
+      topicDetails: {},
+      tags: [],
+      description: '',
+      thumbnail: `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
+      viewCount: '0',
+      likeCount: '0',
+      commentCount: '0',
+      topComments: [],
+      channelTitle: 'YouTube',
+      isOfficial: false
+    }
+  }
+}
+
+/**
+ * 단일 영상 메타데이터 페치 (API 우선)
+ */
+export async function fetchYouTubeMetadata(videoId: string): Promise<YouTubeMetadata | null> {
+  if (!YOUTUBE_API_KEY) return fetchYouTubeMetadataEmergency(videoId)
 
   try {
-    // 1. 기본 정보 및 통계 가져오기
+    // 0. 캐시 체크
+    const cached = await getCachedMetadata(videoId)
+    if (cached && !Array.isArray(cached)) return cached
+
+    // 1. API 호출
     const videoUrl = `https://www.googleapis.com/youtube/v3/videos?id=${videoId}&part=snippet,topicDetails,statistics&key=${YOUTUBE_API_KEY}`
     const videoRes = await fetch(videoUrl)
     const videoData = await videoRes.json()
 
-    if (!videoData.items || videoData.items.length === 0) return null
-    const item = videoData.items[0]
-
-    // 2. 댓글 스레드 가져오기 (가장 인기 있는 댓글 5개)
-    let topComments: string[] = []
-    try {
-      const commentUrl = `https://www.googleapis.com/youtube/v3/commentThreads?videoId=${videoId}&part=snippet&maxResults=5&order=relevance&key=${YOUTUBE_API_KEY}`
-      const commentRes = await fetch(commentUrl)
-      const commentData = await commentRes.json()
-      if (commentData.items) {
-        topComments = commentData.items.map((c: any) => c.snippet.topLevelComment.snippet.textDisplay)
-      }
-    } catch (e) {
-      console.warn('Failed to fetch comments for video:', videoId)
+    if (videoData.error || !videoData.items || videoData.items.length === 0) {
+      return fetchYouTubeMetadataEmergency(videoId)
     }
 
-    return {
+    const item = videoData.items[0]
+    const result = {
       videoId,
       title: item.snippet.title,
       videoCategoryId: item.snippet.categoryId,
@@ -63,102 +119,80 @@ export async function fetchYouTubeMetadata(videoId: string): Promise<YouTubeMeta
       viewCount: item.statistics.viewCount,
       likeCount: item.statistics.likeCount,
       commentCount: item.statistics.commentCount,
-      topComments
+      topComments: [],
+      channelId: item.snippet.channelId,
+      channelTitle: item.snippet.channelTitle,
     }
+
+    saveMetadataToCache(videoId, result, 'video')
+    return result
   } catch (error) {
-    console.error('YouTube API Error:', error)
-    return null
+    return fetchYouTubeMetadataEmergency(videoId)
   }
 }
 
+/**
+ * 유튜브 검색 (API 전용)
+ */
 export async function searchYouTube(
-  query: string, 
-  maxResults: number = 20, 
+  query: string,
+  maxResults: number = 20,
   order: 'relevance' | 'viewCount' | 'date' = 'relevance'
 ): Promise<YouTubeMetadata[]> {
   if (!YOUTUBE_API_KEY) return []
 
   try {
     const url = `https://www.googleapis.com/youtube/v3/search?q=${encodeURIComponent(query)}&part=snippet&type=video&maxResults=${maxResults}&order=${order}&key=${YOUTUBE_API_KEY}`
-    console.log('>>> [YOUTUBE SEARCH] URL:', url.replace(YOUTUBE_API_KEY || '', 'HIDDEN_KEY'))
-    
     const res = await fetch(url)
     const data = await res.json()
 
     if (data.error) {
-      if (data.error.errors?.[0]?.reason === 'quotaExceeded') {
-        throw new Error('YOUTUBE_QUOTA_EXCEEDED')
-      }
-      throw new Error(data.error.message || 'YouTube API error')
-    }
-
-    if (!data.items || data.items.length === 0) {
+      if (data.error.errors?.[0]?.reason === 'quotaExceeded') throw new Error('YOUTUBE_QUOTA_EXCEEDED')
       return []
     }
 
-    // 2. 검색 결과에서 채널 ID 추출
-    const channelIds = Array.from(new Set(data.items.map((item: any) => item.snippet.channelId))).join(',')
-    
-    // 3. 채널 상세 정보 가져오기 (공식 여부 판별용)
-    let channelMap: Record<string, { subscriberCount: string, verified: boolean }> = {}
-    try {
-      const channelUrl = `https://www.googleapis.com/youtube/v3/channels?id=${channelIds}&part=snippet,statistics&key=${YOUTUBE_API_KEY}`
-      const channelRes = await fetch(channelUrl)
-      const channelData = await channelRes.json()
-      
-      if (channelData.items) {
-        channelData.items.forEach((c: any) => {
-          channelMap[c.id] = {
-            subscriberCount: c.statistics.subscriberCount,
-            // verified 여부는 snippet이나 status에 직접 없을 수 있어, 
-            // 보통 customUrl이나 특정 로직으로 판별하거나 snippet에 일부 정보가 있음
-            // 여기서는 snippet.title과 statistics를 조합하여 판별
-            verified: c.snippet.title.toLowerCase().includes('official') || 
-                      c.snippet.title.toLowerCase().includes('ch.') || 
-                      parseInt(c.statistics.subscriberCount) > 50000 
-          }
-        })
-      }
-    } catch (e) {
-      console.warn('Failed to fetch channel details:', e)
-    }
-
-    return data.items
+    return (data.items || [])
       .filter((item: any) => item.id && item.id.videoId)
-      .map((item: any) => {
-        const cInfo = channelMap[item.snippet.channelId]
-        return {
-          videoId: item.id.videoId,
-          title: item.snippet.title,
-          description: item.snippet.description,
-          thumbnail: item.snippet.thumbnails?.high?.url || item.snippet.thumbnails?.default?.url,
-          tags: [],
-          videoCategoryId: '',
-          topicDetails: {},
-          publishedAt: item.snippet.publishedAt,
-          channelId: item.snippet.channelId,
-          channelTitle: item.snippet.channelTitle,
-          subscriberCount: cInfo?.subscriberCount,
-          isOfficial: cInfo?.verified || false
-        }
-      })
+      .map((item: any) => ({
+        videoId: item.id.videoId,
+        title: item.snippet.title,
+        description: item.snippet.description,
+        thumbnail: item.snippet.thumbnails?.high?.url || item.snippet.thumbnails?.default?.url,
+        tags: [],
+        videoCategoryId: '',
+        topicDetails: {},
+        publishedAt: item.snippet.publishedAt,
+        channelId: item.snippet.channelId,
+        channelTitle: item.snippet.channelTitle,
+        isOfficial: false
+      }))
   } catch (error) {
-    console.error('YouTube Search API Error:', error)
+    console.error('Search failed:', error)
     return []
   }
 }
 
+/**
+ * 재생목록 가져오기 (정식 API 버전)
+ */
 export async function fetchPlaylistItems(playlistId: string, maxResults: number = 50): Promise<YouTubeMetadata[]> {
-  if (!YOUTUBE_API_KEY || !playlistId) return []
+  if (!YOUTUBE_API_KEY || !playlistId) return fetchPlaylistItemsScraping(playlistId, maxResults)
+
+  const cached = await getCachedMetadata(playlistId)
+  if (cached && Array.isArray(cached)) return cached
 
   try {
     const url = `https://www.googleapis.com/youtube/v3/playlistItems?playlistId=${playlistId}&part=snippet&maxResults=${maxResults}&key=${YOUTUBE_API_KEY}`
     const res = await fetch(url)
     const data = await res.json()
 
-    if (!data.items) return []
+    if (data.error) {
+      // 할당량 초과 시 크롤링으로 전환
+      if (data.error.errors?.[0]?.reason === 'quotaExceeded') return fetchPlaylistItemsScraping(playlistId, maxResults)
+      throw new Error(data.error.message)
+    }
 
-    return data.items.map((item: any) => ({
+    const results = data.items.map((item: any) => ({
       videoId: item.snippet.resourceId.videoId,
       title: item.snippet.title,
       description: item.snippet.description,
@@ -171,19 +205,66 @@ export async function fetchPlaylistItems(playlistId: string, maxResults: number 
       channelTitle: item.snippet.channelTitle,
       isOfficial: false
     }))
+
+    if (results.length > 0) saveMetadataToCache(playlistId, results, 'playlist')
+    return results
   } catch (error) {
-    console.error('YouTube Playlist API Error:', error)
-    return []
+    return fetchPlaylistItemsScraping(playlistId, maxResults)
   }
 }
 
+/**
+ * [핵심] 재생목록 크롤링 버전 (ytpl + 위장 헤더)
+ */
+export async function fetchPlaylistItemsScraping(playlistId: string, maxResults: number = 50): Promise<YouTubeMetadata[]> {
+  const cached = await getCachedMetadata(playlistId)
+  if (cached && Array.isArray(cached)) return cached
+
+  try {
+    console.log(`>>> [SCRAPING START] playlistId: ${playlistId}, Disguised as User...`)
+
+    const playlist = await Promise.race([
+      ytpl(playlistId, {
+        limit: maxResults,
+        requestOptions: REQUEST_OPTIONS
+      }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('YOUTUBE_TIMEOUT')), 10000))
+    ]) as ytpl.Result
+
+    const results = playlist.items.map(item => ({
+      videoId: item.id,
+      title: item.title,
+      description: '',
+      thumbnail: item.bestThumbnail?.url || item.thumbnails?.[0]?.url || `https://img.youtube.com/vi/${item.id}/hqdefault.jpg`,
+      tags: [],
+      videoCategoryId: '',
+      topicDetails: {},
+      publishedAt: '',
+      channelId: item.author.channelID,
+      channelTitle: item.author.name,
+      isOfficial: false
+    }))
+
+    if (results.length > 0) saveMetadataToCache(playlistId, results, 'playlist')
+    return results
+  } catch (error: any) {
+    console.error('ytpl Scraping Failed:', error.message)
+    throw new Error(`유튜브가 접근을 차단했습니다. (Details: ${error.message})`)
+  }
+}
+
+/**
+ * 채널 업로드 목록 (UU 트릭)
+ */
 export async function fetchChannelUploads(channelId: string, maxResults: number = 50): Promise<YouTubeMetadata[]> {
-  if (!YOUTUBE_API_KEY || !channelId) return []
-  // UU Trick: UC로 시작하는 채널 ID를 UU로 바꾸면 업로드 플레이리스트 ID가 됨
+  if (!channelId) return []
   const uploadsPlaylistId = channelId.replace(/^UC/, 'UU')
   return fetchPlaylistItems(uploadsPlaylistId, maxResults)
 }
 
+/**
+ * URL 파싱 유틸리티
+ */
 export function extractVideoId(url: string): string | null {
   if (!url) return null
   const regex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/|youtube\.com\/shorts\/)([^"&?\/\s]{11})/
@@ -196,4 +277,29 @@ export function extractPlaylistId(url: string): string | null {
   const regex = /[?&]list=([^#&?]+)/
   const match = url.match(regex)
   return match ? match[1] : null
+}
+
+/**
+ * Supabase 캐시 처리 (마스터 권한 적용)
+ */
+async function getCachedMetadata(id: string): Promise<any | null> {
+  try {
+    const supabase = await createAdminClient() // [수정] createAdminClient 사용
+    const { data } = await supabase.from('youtube_cache').select('metadata, expires_at').eq('id', id).single()
+    if (!data || new Date(data.expires_at) < new Date()) return null
+    return data.metadata
+  } catch (e) { return null }
+}
+
+async function saveMetadataToCache(id: string, metadata: any, type: 'video' | 'playlist' = 'video') {
+  try {
+    const supabase = await createAdminClient() // [수정] createAdminClient 사용
+    await supabase.from('youtube_cache').upsert({
+      id, type, title: metadata.title || '', thumbnail: metadata.thumbnail || '',
+      channel_id: metadata.channelId || '', channel_title: metadata.channelTitle || '',
+      metadata, expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+    })
+  } catch (e) {
+    console.error('Cache save failed (Check Admin Key):', e)
+  }
 }

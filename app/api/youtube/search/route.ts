@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { searchYouTube } from '@/utils/youtube'
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/server' // [수정] 마스터 키 클라이언트 임포트
 import crypto from 'crypto'
+
+export const dynamic = 'force-dynamic';
 
 // 검색어 해시 생성 (쿼리 + 정렬 조합)
 function generateQueryHash(query: string, order: string): string {
@@ -25,7 +27,8 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Query is missing' }, { status: 400 })
     }
 
-    const supabase = await createClient()
+    // [수정] createAdminClient를 사용하여 RLS 무시 권한 획득
+    const supabase = await createAdminClient()
     const queryHash = generateQueryHash(query, order)
 
     // 1. 캐시 조회 (만료되지 않은 데이터)
@@ -38,8 +41,8 @@ export async function GET(req: NextRequest) {
 
     if (cached) {
       console.log(`>>> [CACHE HIT] Query: "${query}", Hits: ${cached.hit_count + 1}`)
-      
-      // 비동기적으로 Hit 카운트 업데이트 (응답 속도에 영향을 주지 않음)
+
+      // 비동기적으로 Hit 카운트 업데이트 (마스터 권한으로 성공 보장)
       supabase
         .from('cached_searches')
         .update({ hit_count: (cached.hit_count || 1) + 1 })
@@ -53,7 +56,7 @@ export async function GET(req: NextRequest) {
     console.log(`>>> [CACHE MISS] Calling YouTube API for: "${query}"`)
     const rawResults = await searchYouTube(query, 20, order)
 
-    // 3. 데이터 다이어트 (필요한 정보만 추출하여 저장)
+    // 3. 데이터 다이어트 (필요한 정보만 추출)
     const optimizedResults = rawResults.map(v => ({
       videoId: v.videoId,
       title: v.title,
@@ -64,7 +67,7 @@ export async function GET(req: NextRequest) {
       publishedAt: v.publishedAt
     }))
 
-    // 4. 캐시 저장
+    // 4. 캐시 저장 (마스터 권한으로 RLS 우회 저장)
     const expirationHours = getExpirationHours(query)
     const expiresAt = new Date(Date.now() + expirationHours * 60 * 60 * 1000).toISOString()
 
@@ -76,7 +79,7 @@ export async function GET(req: NextRequest) {
       created_at: new Date().toISOString()
     })
 
-    // 5. 만료된 오래된 캐시 비동기 정화
+    // 5. 만료된 오래된 캐시 비동기 정화 (마스터 권한으로 청소)
     supabase
       .from('cached_searches')
       .delete()

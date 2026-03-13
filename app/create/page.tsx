@@ -3,14 +3,14 @@
 import React, { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useRouter } from 'next/navigation'
-import { 
-  Sparkles, 
-  Youtube, 
+import {
+  Sparkles,
+  Youtube,
   Search,
-  ArrowRight, 
-  Loader2, 
-  Trash2, 
-  Plus, 
+  ArrowRight,
+  Loader2,
+  Trash2,
+  Plus,
   Info,
   CheckCircle2,
   AlertCircle,
@@ -43,7 +43,7 @@ interface AIResult {
   is_vs_mode: boolean
   search_keywords: string[]
   confidence_score: number
-  recommended_title?: string
+  recommended_titles?: string[]
   cached?: boolean
   model?: string
 }
@@ -82,23 +82,23 @@ export default function WorldcupCreatePage() {
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [analysisProgress, setAnalysisProgress] = useState(0)
   const [isTitleUpgraded, setIsTitleUpgraded] = useState(false)
-  
+
   const [aiResult, setAiResult] = useState<AIResult | null>(null)
   const [items, setItems] = useState<WorldcupItem[]>([])
   const [teamNames, setTeamNames] = useState({ A: 'Team A', B: 'Team B' })
-  
+
   const [showNudge, setShowNudge] = useState(false)
   const [nudgeReason, setNudgeReason] = useState<'rounds' | 'ads' | 'ai'>('rounds')
   const [gamificationMsg, setGamificationMsg] = useState('')
   const [briefingIndex, setBriefingIndex] = useState(0)
-  
+
   const [showSearchModal, setShowSearchModal] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<WorldcupItem[]>([])
   const [isSearching, setIsSearching] = useState(false)
   const [searchOrder, setSearchOrder] = useState<'relevance' | 'viewCount' | 'date'>('relevance')
   const [searchMode, setSearchMode] = useState<'seed' | 'candidate'>('seed')
-  
+
   const [searchError, setSearchError] = useState<string | null>(null)
 
   // Playlist States
@@ -136,18 +136,23 @@ export default function WorldcupCreatePage() {
     }
   }, [isAnalyzing, analysisProgress])
 
-  const handleStartAnalysis = async (e?: React.FormEvent, overrideVideoId?: string, overrideThumbnail?: string, overrideTitle?: string) => {
+  const handleStartAnalysis = async (e?: React.FormEvent, overrideVideoId?: string, overrideThumbnail?: string, overrideTitle?: string, bulkItems?: WorldcupItem[]) => {
     e?.preventDefault()
-    
-    // 재생목록 감지
-    const playlistId = extractPlaylistId(seedUrl)
-    if (playlistId && !overrideVideoId) {
-      handlePlaylistFetch(playlistId)
-      return
-    }
 
-    const targetVideoId = overrideVideoId || extractVideoId(seedUrl)
-    if (!targetVideoId) {
+    // URL에서 ID 추출
+    const videoIdFromUrl = extractVideoId(seedUrl)
+    const playlistIdFromUrl = extractPlaylistId(seedUrl)
+
+    // [수정 1] 플레이리스트/동영상 URL 우선순위 판별
+    // 단일 영상 ID(v=)가 확실히 있으면, 재생목록(list=)이 같이 있어도 무조건 단일 영상 우선 처리!
+    const targetVideoId = overrideVideoId || videoIdFromUrl
+
+    if (targetVideoId) {
+      // 단일 영상이 감지되었으므로 재생목록 호출을 건너뛰고 아래 AI 분석 로직으로 진행
+    } else if (playlistIdFromUrl) {
+      handlePlaylistFetch(playlistIdFromUrl)
+      return
+    } else {
       alert('올바른 유튜브 영상 또는 재생목록 주소를 입력해주세요.')
       return
     }
@@ -169,8 +174,7 @@ export default function WorldcupCreatePage() {
       })
 
       const data = await res.json()
-      
-      // 429 에러나 기타 AI 실패 시에도 진행 가능하도록 처리 (is_fallback 체크)
+
       if (data.error && !data.is_fallback) throw new Error(data.error)
 
       if (data.is_fallback) {
@@ -179,40 +183,59 @@ export default function WorldcupCreatePage() {
 
       setAiResult(data)
       setAnalysisProgress(100)
-      
-      // AI 추천 제목으로 자동 업데이트 (애니메이션 유도), 폴백이 아닐 때만
-      if (data.recommended_title && !data.is_fallback) {
-        setGamificationMsg('AI가 더 힙한 제목을 제안했습니다! ✨')
-        setTitle(data.recommended_title)
-        setIsTitleUpgraded(true)
-        setTimeout(() => setIsTitleUpgraded(false), 3000)
-      } else if (overrideTitle) {
+
+      // AI Content Marketer: Spicy Title Suggestions
+      const videoTitles = items.map(it => it.title)
+      const titlesToAnalyze = videoTitles.length > 0 ? videoTitles : [overrideTitle || title || data.title]
+
+      if (titlesToAnalyze.length > 0) {
+        fetch('/api/gemini/suggest-title', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ titles: titlesToAnalyze })
+        })
+          .then(res => res.json())
+          .then(spicyTitles => {
+            if (Array.isArray(spicyTitles) && spicyTitles.length > 0) {
+              setTimeout(() => {
+                setAiResult((prev: any) => prev ? ({
+                  ...prev,
+                  recommended_titles: spicyTitles
+                }) : prev)
+                setGamificationMsg('수석 마케터 AI가 "도파민 제목"을 직접 추출했습니다! 🔥')
+                setTitle(spicyTitles[0])
+                setIsTitleUpgraded(true)
+                setTimeout(() => setIsTitleUpgraded(false), 3000)
+              }, 1000)
+            }
+          })
+          .catch(err => console.error('Spicy title suggestion failed:', err))
+      }
+
+      if (overrideTitle) {
         setTitle(overrideTitle)
       }
 
-      // 실제 데이터 기반 아이템 추가 (초기 1개)
-      // 첫 비디오는 VS 모드라면 팀 A로 자동 배정 (사용자 편의)
-      const seedItem: WorldcupItem = { 
-        id: Date.now().toString(), 
-        title: overrideTitle || data.recommended_title || title, 
-        team: data.is_vs_mode ? 'A' : 'Neutral', 
-        thumbnail: overrideThumbnail || data.thumbnail || `https://img.youtube.com/vi/${targetVideoId}/maxresdefault.jpg`, 
+      // [수정 2] 개별 후보 영상 제목 오염 방지
+      // seedItem.title은 영상의 '원래 제목'이어야 함. 메인 월드컵 제목(title)으로 덮어씌워지는 것 방지.
+      const seedItem: WorldcupItem = {
+        id: Date.now().toString(),
+        title: overrideTitle || (data && data.title ? data.title : '유튜브 영상'),
+        team: data && data.is_vs_mode ? 'A' : 'Neutral',
+        thumbnail: overrideThumbnail || (data && data.thumbnail) || `https://img.youtube.com/vi/${targetVideoId}/hqdefault.jpg`,
         videoId: targetVideoId
       }
-      setItems([seedItem])
+      setItems(bulkItems && bulkItems.length > 0 ? bulkItems : [seedItem])
 
       if (data.confidence_score > 90) {
         setGamificationMsg('AI가 제작자의 의도를 완벽히 파악했습니다! 🎯')
       }
 
-      // VS 모드일 때 자동 밸런싱 (수량 맞추기)
       if (data.is_vs_mode) {
         const teamA = items.filter(it => it.team === 'A')
         const teamB = items.filter(it => it.team === 'B')
         const diff = teamA.length - teamB.length
-        if (diff !== 0) {
-          console.log(`Balancing teams... Diff: ${diff}`)
-        }
+        if (diff !== 0) console.log(`Balancing teams... Diff: ${diff}`)
       }
 
       setTimeout(() => setStep(3), 800)
@@ -228,21 +251,49 @@ export default function WorldcupCreatePage() {
   const handlePlaylistFetch = async (playlistId: string) => {
     setIsFetchingPlaylist(true)
     try {
+      console.log('>>> [DEBUG] Playlist Fetch Start:', playlistId)
       const res = await fetch(`/api/youtube/playlist?playlistId=${playlistId}`)
       const data = await res.json()
+      console.log('>>> [DEBUG] Playlist Data Received:', data)
+
       if (data.error) throw new Error(data.error)
-      
+      if (!Array.isArray(data) || data.length === 0) {
+        throw new Error('재생목록이 비어있거나 비공개 상태입니다. ⚠️')
+      }
+
       const formatted = data.map((v: any) => ({
         ...v,
         id: `${Date.now()}-${Math.random()}`,
         team: 'Neutral'
       }))
-      setPlaylistItems(formatted)
-      setSelectedPlaylistItems(formatted.map((v: any) => v.videoId)) // 기본 전체 선택
+
+      setPlaylistItems([])
+      setSelectedPlaylistItems(formatted.map((v: any) => v.videoId))
       setShowPlaylistModal(true)
-    } catch (err) {
+
+      // [수정 4] 플레이리스트 실시간 로딩(Popping) 연출 및 모달 제어
+      // await 블로킹을 피해 모달이 먼저 뜨게 하고, 백그라운드에서 하나씩 추가
+      const popItems = async () => {
+        for (let i = 0; i < formatted.length; i++) {
+          await new Promise(resolve => setTimeout(resolve, 40))
+          setPlaylistItems(prev => {
+            if (prev.some(it => it.videoId === formatted[i].videoId)) return prev
+            return [...prev, formatted[i]]
+          })
+        }
+      }
+      popItems()
+
+      console.log('>>> [DEBUG] Playlist Population Started')
+    } catch (err: any) {
       console.error(err)
-      alert('재생목록을 가져오는 중 오류가 발생했습니다.')
+      const videoId = extractVideoId(seedUrl)
+      if (videoId) {
+        setGamificationMsg('재생목록을 가져올 수 없어 단일 영상 분석으로 자동 전환합니다. 🔄')
+        setTimeout(() => handleStartAnalysis(undefined, videoId), 1500)
+      } else {
+        alert('재생목록을 가져오는 중 오류가 발생했습니다. 할당량이 소진되었을 수 있습니다.')
+      }
     } finally {
       setIsFetchingPlaylist(false)
     }
@@ -250,15 +301,13 @@ export default function WorldcupCreatePage() {
 
   const addSelectedPlaylistItems = () => {
     const selected = playlistItems.filter(v => selectedPlaylistItems.includes(v.videoId || ''))
-    if (selected.length === 0) return
-
-    // 첫 영상을 씨드로 분석 시작
+    if (selected.length === 0) {
+      alert('최소 하나 이상의 영상을 선택해주세요.')
+      return
+    }
     const first = selected[0]
-    setItems(selected.map(s => ({ ...s, id: `${Date.now()}-${Math.random()}` })))
     setShowPlaylistModal(false)
-    
-    // 분석 엔진 돌리기 (첫 영상 기준)
-    handleStartAnalysis(undefined, first.videoId, first.thumbnail, first.title)
+    handleStartAnalysis(undefined, first.videoId, first.thumbnail, first.title, selected)
   }
 
   const trackAction = async (channelId: string, channelTitle: string, action: 'add' | 'remove' | 'finalize') => {
@@ -280,8 +329,6 @@ export default function WorldcupCreatePage() {
       trackAction(deletedItem.channelId || '', deletedItem.channelTitle || '', 'remove')
     }
     setItems(prev => prev.filter(item => item.id !== id))
-    
-    // Learning Loop: 삭제된 아이템의 성향 분석 및 재추전 제안 (Mock)
     if (deletedItem) {
       setGamificationMsg(`'${deletedItem.title}' 제외 완료. 취향을 반영해 리스트를 보정합니다... ♻️`)
       setTimeout(() => setGamificationMsg(''), 3000)
@@ -290,7 +337,6 @@ export default function WorldcupCreatePage() {
 
   const handleRefineAI = async () => {
     setGamificationMsg('수정된 팀 이름을 기반으로 AI가 분석을 정교화하는 중... 🧠')
-    // 실제로는 새로운 팀 이름을 Gemini에 전달하여 리스트 재추천
     setTimeout(() => {
       setGamificationMsg('AI가 새로운 팀 컨셉에 맞춰 큐레이션을 최적화했습니다!')
       setTimeout(() => setGamificationMsg(''), 3000)
@@ -306,24 +352,21 @@ export default function WorldcupCreatePage() {
 
     setShowSearchModal(false)
     setSearchResults([])
-    
+
     if (searchMode === 'seed') {
       const url = `https://www.youtube.com/watch?v=${video.videoId}`
       setSeedUrl(url)
-      // 피커 선택 시 즉시 엔진 시동 (handleStartAnalysis 호출)
       setGamificationMsg(`'${video.title}' 영상을 기반으로 분석을 시작합니다! 🚀`)
       setTimeout(() => {
         handleStartAnalysis(undefined, video.videoId, video.thumbnail, video.title)
       }, 300)
     } else {
       let candidateTeam: 'A' | 'B' | 'Neutral' = 'Neutral'
-      
       if (aiResult?.is_vs_mode) {
         const teamA = items.filter(it => it.team === 'A').length
         const teamB = items.filter(it => it.team === 'B').length
         candidateTeam = teamA <= teamB ? 'A' : 'B'
       }
-
       setItems(prev => [...prev, { ...video, id: Date.now().toString(), team: candidateTeam }])
       trackAction(video.channelId || '', video.channelTitle || '', 'add')
       setGamificationMsg(`'${video.title}' 후보가 추가되었습니다! ✨`)
@@ -332,7 +375,7 @@ export default function WorldcupCreatePage() {
   }
 
   const handleMoveItem = (id: string, newTeam: 'A' | 'B' | 'Neutral') => {
-    setItems(prev => prev.map(item => 
+    setItems(prev => prev.map(item =>
       item.id === id ? { ...item, team: newTeam } : item
     ))
     setGamificationMsg(`후보를 ${newTeam === 'Neutral' ? '대기실' : teamNames[newTeam === 'A' ? 'A' : 'B']}로 이동했습니다! ⛓️`)
@@ -356,17 +399,15 @@ export default function WorldcupCreatePage() {
   }
 
   const toggleScanItem = (videoId: string) => {
-    setSelectedScanItems(prev => 
-      prev.includes(videoId) 
-        ? prev.filter(id => id !== videoId) 
+    setSelectedScanItems(prev =>
+      prev.includes(videoId)
+        ? prev.filter(id => id !== videoId)
         : [...prev, videoId]
     )
   }
 
   const addSelectedScanItems = () => {
     const selectedVideos = magicScanResults.filter(v => selectedScanItems.includes(v.videoId || ''))
-    
-    // 중복 제거 및 추가
     const newItems: WorldcupItem[] = []
     selectedVideos.forEach(v => {
       if (!items.some(it => it.videoId === v.videoId)) {
@@ -376,25 +417,16 @@ export default function WorldcupCreatePage() {
           const teamB = [...items, ...newItems].filter(it => it.team === 'B').length
           team = teamA <= teamB ? 'A' : 'B'
         }
-        
-        newItems.push({
-          ...v,
-          id: `${Date.now()}-${Math.random()}`,
-          team
-        })
-        
-        // 트랜잭션 추적
+        newItems.push({ ...v, id: `${Date.now()}-${Math.random()}`, team })
         trackAction(v.channelId || '', v.channelTitle || '', 'add')
       }
     })
-
     setItems(prev => [...prev, ...newItems])
     setMagicScanResults([])
     setSelectedScanItems([])
     setGamificationMsg(`${newItems.length}개의 후보가 일괄 추가되었습니다! 🚀`)
   }
 
-  // 컨텍스트 메뉴 닫기용
   useEffect(() => {
     const handleClick = () => setContextMenu(null)
     window.addEventListener('click', handleClick)
@@ -412,6 +444,25 @@ export default function WorldcupCreatePage() {
     setDetectedGroup(null)
     setDetectedSong(null)
 
+    // [수정 3] 검색 모달에서 직접 URL 입력 시 즉시 감지 및 추가 로직
+    // 검색 API를 타지 않고 프론트엔드에서 즉시 가로채 할당량 보호 및 속도 향상
+    const vid = extractVideoId(q)
+    if (vid) {
+      console.log('>>> [DEBUG] Direct Video URL detected in search:', vid)
+      const fallbackItem: WorldcupItem = {
+        id: Date.now().toString(),
+        title: '직접 입력한 유튜브 영상', // 제목은 나중에 수정하거나 AI 분석 시 업데이트
+        team: 'Neutral',
+        thumbnail: `https://img.youtube.com/vi/${vid}/hqdefault.jpg`,
+        videoId: vid,
+        channelTitle: 'YouTube'
+      }
+      handleAddVideo(fallbackItem)
+      setSearchQuery('')
+      setIsSearching(false)
+      return
+    }
+
     // Grouping Engine Logic (Hidden Prefix)
     const extractGroupingKeywords = () => {
       if (items.length < 2) return ""
@@ -428,9 +479,8 @@ export default function WorldcupCreatePage() {
     }
     const hiddenPrefix = searchMode === 'candidate' ? extractGroupingKeywords() : ""
     const finalQuery = hiddenPrefix ? `${q} ${hiddenPrefix}` : q
-    console.log('>>> [DEBUG] handleSearch Query:', { q, hiddenPrefix, finalQuery })
 
-    // AI Intent Analysis & Theme Hunting
+    // Intent Analysis
     fetch('/api/ai/parse-intent', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -438,39 +488,26 @@ export default function WorldcupCreatePage() {
     }).then(res => res.json()).then(data => {
       if (data.group) setDetectedGroup(data.group)
       if (data.song) setDetectedSong(data.song)
-      if (data.theme) {
-        setThemeColors({ 
-          primary: data.theme.primary_color, 
-          secondary: data.theme.secondary_color 
-        })
-      }
+      if (data.theme) setThemeColors({ primary: data.theme.primary_color, secondary: data.theme.secondary_color })
     }).catch(e => console.error('Intent analysis error:', e))
 
     try {
-      // 가오 연출용 지연
       await new Promise(resolve => setTimeout(resolve, 1500))
-      
       const res = await fetch(`/api/youtube/search?q=${encodeURIComponent(finalQuery)}&order=${order}`)
       const data = await res.json()
-      
       if (data.error) throw new Error(data.error)
-      
-      // Relevance Boosting: 현재 추가된 후보들의 채널 ID 수집
-      const selectedChannelIds = new Set(items.map(it => it.channelId).filter(Boolean))
 
+      const selectedChannelIds = new Set(items.map(it => it.channelId).filter(Boolean))
       const formatted = data.map((v: any, index: number) => ({
         ...v,
         id: `${Date.now()}-${Math.random()}-${index}`,
         team: 'Neutral' as const
       }))
-
-      // Relevance Boosting: 같은 채널의 영상을 상단으로 배치
       const sorted = formatted.sort((a: any, b: any) => {
         const aSelected = selectedChannelIds.has(a.channelId) ? 1 : 0
         const bSelected = selectedChannelIds.has(b.channelId) ? 1 : 0
         return bSelected - aSelected
       })
-
       setSearchResults(sorted)
     } catch (error) {
       console.error('Search failed:', error)
@@ -480,17 +517,17 @@ export default function WorldcupCreatePage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#fafafa] dark:bg-[#09090b] text-foreground pb-24">
+    <div className="min-h-screen bg-[#fafafa] dark:bg-[#0f172a] text-foreground pb-24 transition-colors duration-500">
       {/* ProgressBar (Step 2) */}
       <AnimatePresence>
         {step === 2 && (
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed top-0 left-0 right-0 z-[100] h-1.5 bg-zinc-800"
           >
-            <motion.div 
+            <motion.div
               className="h-full bg-gradient-to-r from-violet-600 to-indigo-600"
               style={{ width: `${analysisProgress}%` }}
               transition={{ duration: 0.5 }}
@@ -524,7 +561,7 @@ export default function WorldcupCreatePage() {
                 />
                 <AnimatePresence>
                   {isTitleUpgraded && (
-                    <motion.div 
+                    <motion.div
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0 }}
@@ -543,7 +580,7 @@ export default function WorldcupCreatePage() {
             {isPlus ? (
               <PlusUserBadge />
             ) : (
-              <button 
+              <button
                 onClick={() => { setNudgeReason('ads'); setShowNudge(true); }}
                 className="px-4 py-2 rounded-xl bg-yellow-500/10 text-yellow-600 dark:text-yellow-500 text-sm font-bold border border-yellow-500/20 hover:bg-yellow-500/20 transition-all"
               >
@@ -555,12 +592,12 @@ export default function WorldcupCreatePage() {
 
         {/* STEP 1: Input */}
         {step === 1 && (
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="max-w-2xl mx-auto bg-white dark:bg-[#121214] rounded-[2.5rem] border border-zinc-200 dark:border-zinc-800/50 p-10 shadow-xl dark:shadow-2xl dark:shadow-black/50"
+            className="max-w-2xl mx-auto bg-white dark:bg-slate-900/50 backdrop-blur-xl rounded-[2.5rem] border border-zinc-200 dark:border-violet-500/20 p-10 shadow-xl dark:shadow-violet-500/5"
           >
-            <form onSubmit={(e) => { e.preventDefault(); handleStartAnalysis(); }} className="space-y-8">
+            <form onSubmit={handleStartAnalysis} className="space-y-8">
               <div className="space-y-3">
                 <label className="block text-sm font-black text-zinc-400 uppercase tracking-widest px-1">월드컵 제목</label>
                 <div className="relative group">
@@ -576,63 +613,53 @@ export default function WorldcupCreatePage() {
                     transition={{ duration: 2, repeat: isTitleUpgraded ? 2 : 0 }}
                     className="absolute -inset-2 rounded-3xl pointer-events-none z-0"
                   />
-                  
+
                   <Trophy className="absolute left-6 top-1/2 -translate-y-1/2 w-6 h-6 text-zinc-400 group-focus-within:text-violet-600 transition-colors z-10" />
-                  <input 
-                    type="text" 
+                  <input
+                    type="text"
                     value={title}
                     onChange={(e) => {
                       setTitle(e.target.value)
                       setIsTitleUpgraded(false)
                     }}
-                    placeholder={aiResult?.recommended_title || "예: 시라유키 히나 최고의 커버곡 월드컵"}
-                    className="w-full pl-16 pr-6 py-4 rounded-2xl bg-zinc-50 dark:bg-zinc-800 border-2 border-transparent focus:border-violet-600 focus:outline-none transition-all text-xl font-bold relative z-10"
+                    placeholder="예: 시라유키 히나 최고의 커버곡 월드컵"
+                    className="w-full pl-16 pr-6 py-4 rounded-2xl bg-zinc-50 dark:bg-slate-800 border-2 border-transparent focus:border-violet-600 focus:outline-none transition-all text-xl font-bold relative z-10 shadow-inner"
                   />
-                  
-                  <AnimatePresence>
-                    {isTitleUpgraded && (
-                      <motion.div 
-                        initial={{ opacity: 0, x: 20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        exit={{ opacity: 0, x: 20 }}
-                        className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-1.5 px-3 py-1 bg-violet-600 text-white rounded-full text-[10px] font-black z-20 shadow-lg shadow-violet-500/30"
-                      >
-                        <Sparkles className="w-3 h-3" />
-                        AI UPGRADED
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
                 </div>
 
                 <AnimatePresence>
-                  {aiResult && aiResult.recommended_title && aiResult.recommended_title !== title && (
-                    <motion.div 
-                      initial={{ opacity: 0, y: -10, scale: 0.95 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      exit={{ opacity: 0, y: -10, scale: 0.95 }}
-                      className="mt-3 flex items-center justify-between p-3.5 rounded-2xl bg-gradient-to-r from-violet-500/10 to-transparent border border-violet-500/20 backdrop-blur-sm shadow-lg shadow-violet-500/5"
+                  {aiResult && aiResult.recommended_titles && aiResult.recommended_titles.length > 0 && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -10 }}
+                      className="mt-6 space-y-3"
                     >
-                      <div className="flex items-center gap-2.5">
-                        <div className="p-1.5 rounded-lg bg-violet-500/20">
-                          <Wand2 className="w-4 h-4 text-violet-500 animate-pulse" />
-                        </div>
-                        <div className="flex flex-col">
-                          <span className="text-[10px] font-black text-violet-500 uppercase tracking-wider">AI Recommended Title</span>
-                          <span className="text-xs font-bold text-violet-600 dark:text-violet-400 italic">"{aiResult.recommended_title}"</span>
-                        </div>
+                      <div className="flex items-center gap-2 px-1">
+                        <Wand2 className="w-4 h-4 text-violet-500" />
+                        <span className="text-[10px] font-black text-violet-500 uppercase tracking-[0.2em]">AI Title Suggestions</span>
                       </div>
-                      <motion.button 
-                        type="button"
-                        whileHover={{ 
-                          scale: 1.05,
-                          boxShadow: "0 0 20px rgba(124, 58, 237, 0.4)"
-                        }}
-                        whileTap={{ scale: 0.95 }}
-                        onClick={() => setTitle(aiResult.recommended_title || '')}
-                        className="px-4 py-2 rounded-xl bg-violet-600 text-white text-[11px] font-black hover:bg-violet-700 transition-all flex items-center gap-1.5"
-                      >
-                        제목 적용하기 🪄
-                      </motion.button>
+                      <div className="grid grid-cols-1 gap-2">
+                        {aiResult.recommended_titles.map((recTitle, idx) => (
+                          <motion.button
+                            key={idx}
+                            type="button"
+                            whileHover={{ x: 5, backgroundColor: 'rgba(124, 58, 237, 0.1)' }}
+                            onClick={() => {
+                              setTitle(recTitle)
+                              setIsTitleUpgraded(true)
+                              setTimeout(() => setIsTitleUpgraded(false), 2000)
+                            }}
+                            className={`text-left p-4 rounded-2xl border transition-all text-sm font-bold flex items-center justify-between group ${title === recTitle
+                                ? 'bg-violet-600 border-violet-600 text-white shadow-lg shadow-violet-600/20'
+                                : 'bg-zinc-50 dark:bg-slate-800 border-transparent hover:border-violet-500/30'
+                              }`}
+                          >
+                            <span className="line-clamp-1">{recTitle}</span>
+                            {title === recTitle ? <CheckCircle2 className="w-4 h-4" /> : <Play className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />}
+                          </motion.button>
+                        ))}
+                      </div>
                     </motion.div>
                   )}
                 </AnimatePresence>
@@ -643,41 +670,27 @@ export default function WorldcupCreatePage() {
                 <div className="flex gap-4">
                   <div className="relative flex-1">
                     <Youtube className="absolute left-6 top-1/2 -translate-y-1/2 w-6 h-6 text-red-600" />
-                    <input 
-                      type="text" 
+                    <input
+                      type="text"
                       value={seedUrl}
                       onChange={(e) => setSeedUrl(e.target.value)}
-                      placeholder="https://www.youtube.com/watch?v=..."
-                      className="w-full pl-16 pr-6 py-4 rounded-2xl bg-zinc-50 dark:bg-zinc-800 border-2 border-transparent focus:border-violet-600 focus:outline-none transition-all text-sm font-medium"
+                      placeholder="유튜브 주소를 붙여넣으세요"
+                      className="w-full pl-16 pr-6 py-5 rounded-2xl bg-zinc-50 dark:bg-slate-800 border-2 border-transparent focus:border-violet-600 focus:outline-none transition-all text-sm font-bold shadow-inner"
                     />
                   </div>
-                  <motion.button 
+                  <motion.button
                     type="button"
-                    whileHover={{ 
-                      scale: 1.1,
-                      boxShadow: [
-                        `0 0 0 0px ${accentPrimary}00`,
-                        `0 0 15px 5px ${accentPrimary}4d`,
-                        `0 0 0 0px ${accentPrimary}00`
-                      ]
-                    }}
-                    transition={{
-                      boxShadow: {
-                        duration: 1.5,
-                        repeat: Infinity,
-                        ease: "easeInOut"
-                      }
-                    }}
-                    whileTap={{ scale: 0.9 }}
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
                     onClick={() => {
                       setSearchMode('seed')
                       setSearchQuery(title || '')
                       setShowSearchModal(true)
                     }}
-                    className="px-8 rounded-2xl bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 font-bold hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-all flex items-center gap-2 border border-black/5 dark:border-white/5"
+                    className="px-8 rounded-2xl bg-white dark:bg-slate-800 text-zinc-600 dark:text-zinc-300 font-black hover:bg-zinc-50 dark:hover:bg-slate-700 transition-all flex items-center gap-2 border border-zinc-200 dark:border-violet-500/20 shadow-sm"
                   >
                     <Youtube className="w-5 h-5 text-red-600" />
-                    영상 검색
+                    검색하기
                   </motion.button>
                 </div>
                 <p className="text-xs text-zinc-500 mt-1 flex items-center gap-1.5 px-1">
@@ -686,22 +699,21 @@ export default function WorldcupCreatePage() {
                 </p>
               </div>
 
-              <motion.button 
-                type="button"
-                whileHover={{ scale: 1.02 }}
+              <motion.button
+                type="submit"
+                whileHover={{ scale: 1.02, backgroundColor: '#7c3aed' }}
                 whileTap={{ scale: 0.98 }}
-                onClick={() => handleStartAnalysis()}
                 disabled={isAnalyzing || !seedUrl}
-                className="w-full py-6 rounded-3xl bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 font-black text-xl hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-all flex items-center justify-center gap-3 shadow-xl shadow-black/10 relative overflow-hidden group"
+                className="w-full py-6 rounded-3xl bg-zinc-900 dark:bg-violet-600 text-white font-black text-xl transition-all flex items-center justify-center gap-3 shadow-2xl shadow-violet-600/20 relative overflow-hidden group"
               >
                 {isAnalyzing && (
-                  <motion.div 
+                  <motion.div
                     initial={{ width: 0 }}
                     animate={{ width: `${analysisProgress}%` }}
                     className="absolute inset-0 bg-red-600/10 dark:bg-red-500/10 pointer-events-none"
                   />
                 )}
-                
+
                 {isAnalyzing ? (
                   <div className="flex items-center gap-3">
                     <Loader2 className="w-6 h-6 animate-spin text-red-600" />
@@ -731,12 +743,12 @@ export default function WorldcupCreatePage() {
             </div>
             <h2 className="text-3xl font-black mb-4">AI가 데이터를 정밀 분석 중입니다...</h2>
             <div className="h-20 flex items-center justify-center">
-              <motion.p 
+              <motion.p
                 key={briefingIndex}
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -10 }}
-                className="text-violet-600 dark:text-violet-400 text-lg font-bold italic"
+                className="text-white dark:text-violet-400 text-lg font-black italic tracking-tight"
               >
                 {BRIEFING_MESSAGES[briefingIndex]}
               </motion.p>
@@ -750,7 +762,7 @@ export default function WorldcupCreatePage() {
             {/* Gamification Success Msg */}
             <AnimatePresence>
               {gamificationMsg && (
-                <motion.div 
+                <motion.div
                   initial={{ opacity: 0, scale: 0.9 }}
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.9 }}
@@ -763,9 +775,9 @@ export default function WorldcupCreatePage() {
             </AnimatePresence>
 
             {/* AI Analysis Report Card */}
-            <div className="bg-white dark:bg-zinc-900 rounded-[2.5rem] border border-black/5 dark:border-white/5 p-10 shadow-2xl relative overflow-hidden group">
+            <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-zinc-200 dark:border-violet-500/20 p-10 shadow-xl dark:shadow-violet-900/10 relative overflow-hidden group">
               <div className="absolute top-0 right-0 w-64 h-64 bg-violet-600/5 blur-[100px] -mr-32 -mt-32 rounded-full" />
-              
+
               <div className="relative z-10 grid grid-cols-1 md:grid-cols-4 gap-12 items-start">
                 <div className="md:col-span-3 space-y-6">
                   <div className="flex items-center gap-3">
@@ -774,19 +786,19 @@ export default function WorldcupCreatePage() {
                       <span className="px-3 py-1.5 rounded-xl bg-emerald-500/10 text-emerald-600 text-[10px] font-bold border border-emerald-500/20">CACHED</span>
                     )}
                   </div>
-                  
+
                   <div>
-                    <input 
+                    <input
                       type="text"
                       value={aiResult.determined_genre}
-                      onChange={(e) => setAiResult({...aiResult, determined_genre: e.target.value})}
+                      onChange={(e) => setAiResult({ ...aiResult, determined_genre: e.target.value })}
                       className="bg-zinc-100 dark:bg-white/5 border-none text-3xl font-black mb-2 px-3 py-1 rounded-xl w-full focus:ring-2 ring-violet-500 outline-none transition-all"
                       placeholder="장르 입력"
                     />
-                    <input 
+                    <input
                       type="text"
                       value={aiResult.identity}
-                      onChange={(e) => setAiResult({...aiResult, identity: e.target.value})}
+                      onChange={(e) => setAiResult({ ...aiResult, identity: e.target.value })}
                       className="bg-transparent border-none text-lg font-bold text-zinc-900 dark:text-zinc-100 w-full px-3 py-1 focus:bg-zinc-100 dark:focus:bg-white/5 rounded-xl outline-none"
                       placeholder="정체성 정의"
                     />
@@ -797,9 +809,9 @@ export default function WorldcupCreatePage() {
                       <h4 className="text-xs font-black text-zinc-400 uppercase tracking-widest mb-2 flex items-center gap-2">
                         <Target className="w-3.5 h-3.5" /> 대중 반응 분석
                       </h4>
-                      <textarea 
+                      <textarea
                         value={aiResult.public_reaction}
-                        onChange={(e) => setAiResult({...aiResult, public_reaction: e.target.value})}
+                        onChange={(e) => setAiResult({ ...aiResult, public_reaction: e.target.value })}
                         className="w-full bg-zinc-50 dark:bg-black/20 border-none rounded-2xl p-4 text-sm font-medium text-zinc-600 dark:text-zinc-400 leading-relaxed italic focus:ring-2 ring-violet-500/30 outline-none resize-none"
                         rows={2}
                       />
@@ -808,53 +820,66 @@ export default function WorldcupCreatePage() {
                       <h4 className="text-xs font-black text-zinc-400 uppercase tracking-widest mb-2 flex items-center gap-2">
                         <Sparkles className="w-3.5 h-3.5" /> 월드컵 경쟁력
                       </h4>
-                      <textarea 
+                      <textarea
                         value={aiResult.suitability_reason}
-                        onChange={(e) => setAiResult({...aiResult, suitability_reason: e.target.value})}
+                        onChange={(e) => setAiResult({ ...aiResult, suitability_reason: e.target.value })}
                         className="w-full bg-zinc-50 dark:bg-black/20 border-none rounded-2xl p-4 text-sm font-medium text-zinc-600 dark:text-zinc-400 leading-relaxed focus:ring-2 ring-violet-500/30 outline-none resize-none"
                         rows={2}
                       />
                     </div>
                   </div>
+                </div>
 
-                    <input 
-                      type="text"
-                      placeholder="#태그 추가"
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault()
-                          const val = e.currentTarget.value.trim()
-                          if (val) {
-                            setAiResult({...aiResult, sub_tags: [...aiResult.sub_tags, val.startsWith('#') ? val : `#${val}`]})
-                            e.currentTarget.value = ''
-                          }
-                        }
-                      }}
-                      className="bg-transparent border-dashed border-2 border-zinc-200 dark:border-zinc-800 rounded-full px-4 py-1.5 text-sm font-bold text-zinc-400 focus:border-violet-500 outline-none transition-all w-24 hover:w-32 focus:w-32"
-                    />
+                <div className="flex flex-col items-center justify-center text-center space-y-4">
+                  <div className="w-full aspect-square rounded-[2rem] bg-zinc-50 dark:bg-zinc-800 border border-black/5 dark:border-white/5 flex flex-col items-center justify-center shadow-inner">
+                    <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-2">Confidence</p>
+                    <p className="text-5xl font-black text-violet-600">{aiResult?.confidence_score}%</p>
                   </div>
-                  
-                  <div className="flex flex-col items-center justify-center text-center space-y-4">
-                    <div className="w-full aspect-square rounded-[2rem] bg-zinc-50 dark:bg-zinc-800 border border-black/5 dark:border-white/5 flex flex-col items-center justify-center shadow-inner">
-                      <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-2">Confidence</p>
-                      <p className="text-5xl font-black text-violet-600">{aiResult?.confidence_score}%</p>
-                    </div>
-                    <div className="text-[10px] font-bold text-zinc-400">
-                      Engine: {aiResult?.model || 'Gemini 3.1 Pro'}
-                    </div>
+                  <div className="text-[10px] font-bold text-zinc-400">
+                    Engine: {aiResult?.model || 'Gemini 3.1 Pro'}
                   </div>
                 </div>
               </div>
 
               {/* VS Mode Balance Check View */}
-              <div>
+              <div className="mt-12">
                 <div className="flex items-center justify-between mb-8">
                   <h3 className="text-2xl font-black">후보 구성 ({items.length}강)</h3>
                   <div className="flex gap-3">
                     {aiResult?.is_vs_mode && (
-                    <motion.button 
-                      onClick={handleRefineAI}
-                      whileHover={{ 
+                      <motion.button
+                        onClick={handleRefineAI}
+                        whileHover={{
+                          scale: 1.1,
+                          boxShadow: [
+                            `0 0 0 0px ${accentPrimary}00`,
+                            `0 0 15px 5px ${accentPrimary}4d`,
+                            `0 0 0 0px ${accentPrimary}00`
+                          ]
+                        }}
+                        transition={{
+                          boxShadow: { duration: 2, repeat: Infinity, ease: "easeInOut" }
+                        }}
+                        className="flex items-center gap-2 px-6 py-2 rounded-xl bg-violet-600/10 text-violet-600 font-bold text-sm border border-violet-600/20 transition-all shadow-lg shadow-violet-500/5"
+                      >
+                        <Sparkles className="w-4 h-4" />
+                        AI 분석 정교화
+                      </motion.button>
+                    )}
+                    <motion.button
+                      onClick={() => {
+                        if (!isPlus && items.length >= 64) {
+                          setNudgeReason('rounds')
+                          setShowNudge(true)
+                        } else {
+                          setSearchMode('candidate')
+                          const coreTitle = title.split(' ').slice(0, 2).join(' ')
+                          const defaultQuery = aiResult?.search_keywords?.[0] || `${coreTitle} ${aiResult?.determined_genre}`
+                          setSearchQuery(defaultQuery)
+                          setShowSearchModal(true)
+                        }
+                      }}
+                      whileHover={{
                         scale: 1.1,
                         boxShadow: [
                           `0 0 0 0px ${accentPrimary}00`,
@@ -865,119 +890,90 @@ export default function WorldcupCreatePage() {
                       transition={{
                         boxShadow: { duration: 2, repeat: Infinity, ease: "easeInOut" }
                       }}
-                      className="flex items-center gap-2 px-6 py-2 rounded-xl bg-violet-600/10 text-violet-600 font-bold text-sm border border-violet-600/20 transition-all shadow-lg shadow-violet-500/5"
+                      className="flex items-center gap-2 px-6 py-2 rounded-xl bg-zinc-900 dark:bg-white text-white dark:text-black font-bold text-sm shadow-xl shadow-zinc-500/20 active:scale-95 transition-all"
                     >
-                      <Sparkles className="w-4 h-4" />
-                      AI 분석 정교화
+                      <Plus className="w-4 h-4" />
+                      후보 추가
                     </motion.button>
-                  )}
-                  <motion.button 
-                    onClick={() => {
-                      if (!isPlus && items.length >= 64) {
-                        setNudgeReason('rounds')
-                        setShowNudge(true)
-                      } else {
-                        setSearchMode('candidate')
-                        const coreTitle = title.split(' ').slice(0, 2).join(' ')
-                        const defaultQuery = aiResult?.search_keywords?.[0] || `${coreTitle} ${aiResult?.determined_genre}`
-                        setSearchQuery(defaultQuery)
-                        setShowSearchModal(true)
-                      }
-                    }}
-                    whileHover={{ 
-                      scale: 1.1,
-                      boxShadow: [
-                        `0 0 0 0px ${accentPrimary}00`,
-                        `0 0 15px 5px ${accentPrimary}4d`,
-                        `0 0 0 0px ${accentPrimary}00`
-                      ]
-                    }}
-                    transition={{
-                      boxShadow: { duration: 2, repeat: Infinity, ease: "easeInOut" }
-                    }}
-                    className="flex items-center gap-2 px-6 py-2 rounded-xl bg-zinc-900 dark:bg-white text-white dark:text-black font-bold text-sm shadow-xl shadow-zinc-500/20 active:scale-95 transition-all"
-                  >
-                    <Plus className="w-4 h-4" />
-                    후보 추가
-                  </motion.button>
-                </div>
-              </div>
-
-              {aiResult?.is_vs_mode ? (
-                <div className="space-y-12">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8 relative">
-                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10 hidden md:flex items-center justify-center w-12 h-12 rounded-full bg-zinc-900 text-white font-black text-xs border-4 border-gray-50 dark:border-black">VS</div>
-                    
-                    {/* Team A */}
-                    <div id="team-a-zone" className="space-y-4 p-4 rounded-3xl border-2 border-dashed border-transparent transition-all group/zone-a hover:border-violet-500/30 hover:bg-violet-500/5">
-                      <div className="flex items-center justify-between px-2">
-                        <input 
-                          type="text" 
-                          value={teamNames.A} 
-                          onChange={(e) => setTeamNames({ ...teamNames, A: e.target.value })}
-                          className="bg-transparent border-none text-xl font-black text-violet-600 focus:outline-none w-full"
-                        />
-                        <span className="text-xs font-bold text-zinc-400 shrink-0">{items.filter(it => it.team === 'A').length} items</span>
-                      </div>
-                      <div className="grid grid-cols-2 gap-4 pointer-events-none *:pointer-events-auto">
-                        {items.filter(it => it.team === 'A').map(item => (
-                          <ItemCard key={item.id} item={item} onDelete={handleDeleteItem} onMove={handleMoveItem} />
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Team B */}
-                    <div id="team-b-zone" className="space-y-4 p-4 rounded-3xl border-2 border-dashed border-transparent transition-all group/zone-b hover:border-indigo-500/30 hover:bg-indigo-500/5">
-                      <div className="flex items-center justify-between px-2">
-                        <input 
-                          type="text" 
-                          value={teamNames.B}
-                          onChange={(e) => setTeamNames({...teamNames, B: e.target.value})}
-                          className="bg-transparent border-none text-xl font-black text-indigo-600 focus:outline-none w-full text-right"
-                        />
-                        <span className="text-xs font-bold text-zinc-400 shrink-0">{items.filter(it => it.team === 'B').length} items</span>
-                      </div>
-                      <div className="grid grid-cols-2 gap-4 pointer-events-none *:pointer-events-auto">
-                        {items.filter(it => it.team === 'B').map(item => (
-                          <ItemCard key={item.id} item={item} onDelete={handleDeleteItem} onMove={handleMoveItem} />
-                        ))}
-                      </div>
-                    </div>
                   </div>
+                </div>
 
-                  {/* Neutral / Waiting Room */}
-                  {items.some(it => it.team === 'Neutral') && (
-                    <div className="pt-10 border-t border-zinc-100 dark:border-zinc-800 space-y-6">
-                      <div className="flex items-center gap-3 px-2">
-                        <div className="p-1 px-3 rounded-full bg-zinc-100 dark:bg-zinc-800 text-[10px] font-black text-zinc-400 uppercase tracking-widest">Unassigned</div>
-                        <h4 className="text-lg font-black text-zinc-400">대기실 후보 ({items.filter(it => it.team === 'Neutral').length})</h4>
+                {aiResult?.is_vs_mode ? (
+                  <div className="space-y-12">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8 relative">
+                      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10 hidden md:flex items-center justify-center w-12 h-12 rounded-full bg-zinc-900 text-white font-black text-xs border-4 border-gray-50 dark:border-black">VS</div>
+
+                      {/* Team A */}
+                      <div id="team-a-zone" className="space-y-4 p-4 rounded-3xl border-2 border-dashed border-transparent transition-all group/zone-a hover:border-violet-500/30 hover:bg-violet-500/5">
+                        <div className="flex items-center justify-between px-2">
+                          <input
+                            type="text"
+                            value={teamNames.A}
+                            onChange={(e) => setTeamNames({ ...teamNames, A: e.target.value })}
+                            className="bg-transparent border-none text-xl font-black text-violet-600 focus:outline-none w-full"
+                          />
+                          <span className="text-xs font-bold text-zinc-400 shrink-0">{items.filter(it => it.team === 'A').length} items</span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4 pointer-events-none *:pointer-events-auto">
+                          {items.filter(it => it.team === 'A').map(item => (
+                            <ItemCard key={item.id} item={item} onDelete={handleDeleteItem} onMove={handleMoveItem} />
+                          ))}
+                        </div>
                       </div>
-                      <div id="waiting-room-zone" className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-6 p-4 rounded-3xl border-2 border-dashed border-transparent transition-all hover:border-zinc-400/20 hover:bg-zinc-400/5 pointer-events-none *:pointer-events-auto">
-                        {items.filter(it => it.team === 'Neutral').map(item => (
-                          <ItemCard key={item.id} item={item} onDelete={handleDeleteItem} onMove={handleMoveItem} />
-                        ))}
+
+                      {/* Team B */}
+                      <div id="team-b-zone" className="space-y-4 p-4 rounded-3xl border-2 border-dashed border-transparent transition-all group/zone-b hover:border-indigo-500/30 hover:bg-indigo-500/5">
+                        <div className="flex items-center justify-between px-2">
+                          <input
+                            type="text"
+                            value={teamNames.B}
+                            onChange={(e) => setTeamNames({ ...teamNames, B: e.target.value })}
+                            className="bg-transparent border-none text-xl font-black text-indigo-600 focus:outline-none w-full text-right"
+                          />
+                          <span className="text-xs font-bold text-zinc-400 shrink-0">{items.filter(it => it.team === 'B').length} items</span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4 pointer-events-none *:pointer-events-auto">
+                          {items.filter(it => it.team === 'B').map(item => (
+                            <ItemCard key={item.id} item={item} onDelete={handleDeleteItem} onMove={handleMoveItem} />
+                          ))}
+                        </div>
                       </div>
-                      <p className="text-xs text-zinc-400 px-2 italic">* VS 모드에서는 후보들을 각 팀으로 배정해야 공정한 대결이 가능합니다.</p>
                     </div>
-                  )}
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-                  {items.map(item => (
-                    <ItemCard key={item.id} item={item} onDelete={handleDeleteItem} />
-                  ))}
-                </div>
-              )}
+
+                    {/* Neutral / Waiting Room */}
+                    {items.some(it => it.team === 'Neutral') && (
+                      <div className="pt-10 border-t border-zinc-100 dark:border-zinc-800 space-y-6">
+                        <div className="flex items-center gap-3 px-2">
+                          <div className="p-1 px-3 rounded-full bg-zinc-100 dark:bg-zinc-800 text-[10px] font-black text-zinc-400 uppercase tracking-widest">Unassigned</div>
+                          <h4 className="text-lg font-black text-zinc-400">대기실 후보 ({items.filter(it => it.team === 'Neutral').length})</h4>
+                        </div>
+                        <div id="waiting-room-zone" className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-6 p-4 rounded-3xl border-2 border-dashed border-transparent transition-all hover:border-zinc-400/20 hover:bg-zinc-400/5 pointer-events-none *:pointer-events-auto">
+                          {items.filter(it => it.team === 'Neutral').map(item => (
+                            <ItemCard key={item.id} item={item} onDelete={handleDeleteItem} onMove={handleMoveItem} />
+                          ))}
+                        </div>
+                        <p className="text-xs text-zinc-400 px-2 italic">* VS 모드에서는 후보들을 각 팀으로 배정해야 공정한 대결이 가능합니다.</p>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+                    {items.map(item => (
+                      <ItemCard key={item.id} item={item} onDelete={handleDeleteItem} />
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Final Action */}
             <div className="flex flex-col items-center gap-4 pt-12">
-              <button 
+              <button
                 disabled={items.length < 4}
                 onClick={async () => {
                   // 크리에이터 승격 & 페이지 이동
                   if (user?.id) {
-                    await supabase.from('profiles').update({ 
+                    await supabase.from('profiles').update({
                       is_creator: true,
                       creator_since: new Date().toISOString(),
                       creator_grade: 'Bronze'
@@ -990,7 +986,7 @@ export default function WorldcupCreatePage() {
                   })
 
                   // 실제 생성된 ID 혹은 데모 ID로 이동
-                  router.push(`/worldcup/test-worldcup-id`) 
+                  router.push(`/worldcup/test-worldcup-id`)
                   router.refresh()
                 }}
                 className="px-16 py-6 rounded-[2rem] bg-violet-600 text-white font-black text-2xl shadow-2xl shadow-violet-600/40 hover:scale-105 active:scale-95 transition-all flex items-center gap-4 disabled:opacity-30 disabled:hover:scale-100 disabled:cursor-not-allowed group"
@@ -998,23 +994,23 @@ export default function WorldcupCreatePage() {
                 <Trophy className="w-8 h-8 fill-current group-hover:rotate-12 transition-transform" />
                 월드컵 생성하기
               </button>
-              </div>
             </div>
-          )}
-        </div>
+          </div>
+        )}
+      </div>
 
       {/* Youtube Search Modal */}
       <AnimatePresence>
         {showSearchModal && (
           <div className="fixed inset-0 z-[200] flex items-center justify-center p-6">
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setShowSearchModal(false)}
               className="absolute inset-0 bg-black/60 backdrop-blur-sm dark:bg-black/80"
             />
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
@@ -1029,22 +1025,22 @@ export default function WorldcupCreatePage() {
                     후보 직접 추가
                   </h2>
                   <button onClick={() => setShowSearchModal(false)} className="w-10 h-10 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center justify-center transition-colors">
-                    <Trash2 className="w-5 h-5 text-zinc-400" />
+                    <X className="w-5 h-5 text-zinc-400" />
                   </button>
                 </div>
 
                 <div className="flex flex-col md:flex-row gap-6 mb-10">
                   <div className="relative flex-1">
-                    <input 
-                      type="text" 
+                    <input
+                      type="text"
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                       placeholder="검색어나 YouTube 링크를 입력하세요..."
                       className="w-full pl-8 pr-32 py-5 rounded-2xl bg-zinc-50 dark:bg-zinc-800 border-2 border-transparent focus:border-red-600 focus:outline-none transition-all text-lg font-bold"
                     />
-                    <motion.button 
-                      whileHover={{ 
+                    <motion.button
+                      whileHover={{
                         scale: 1.1,
                         boxShadow: [
                           "0 0 0 0px rgba(220, 38, 38, 0)",
@@ -1067,7 +1063,7 @@ export default function WorldcupCreatePage() {
                       {isSearching ? <Loader2 className="w-5 h-5 animate-spin" /> : '검색'}
                     </motion.button>
                   </div>
-                  
+
                   <div className="flex bg-zinc-100 dark:bg-zinc-800 p-1.5 rounded-2xl border border-black/5 dark:border-white/5 h-fit shadow-inner">
                     {[
                       { id: 'relevance', label: '관련성' },
@@ -1076,7 +1072,7 @@ export default function WorldcupCreatePage() {
                     ].map((order) => (
                       <motion.button
                         key={order.id}
-                        whileHover={{ 
+                        whileHover={{
                           scale: 1.15,
                           zIndex: 10,
                           backgroundColor: searchOrder === order.id ? undefined : "rgba(161, 161, 170, 0.1)"
@@ -1085,17 +1081,15 @@ export default function WorldcupCreatePage() {
                         onClick={() => {
                           const newOrder = order.id as 'relevance' | 'viewCount' | 'date'
                           setSearchOrder(newOrder)
-                          // 정렬 변경 시 즉시 재검색 호출
                           handleSearch(undefined, newOrder)
                         }}
-                        className={`px-6 py-3 rounded-xl text-sm font-black transition-all relative ${
-                          searchOrder === order.id 
-                            ? 'bg-white dark:bg-zinc-700 text-red-600 shadow-xl' 
+                        className={`px-6 py-3 rounded-xl text-sm font-black transition-all relative ${searchOrder === order.id
+                            ? 'bg-white dark:bg-zinc-700 text-red-600 shadow-xl'
                             : 'text-zinc-500 hover:text-zinc-700 dark:text-zinc-400'
-                        }`}
+                          }`}
                       >
                         {searchOrder === order.id && (
-                          <motion.div 
+                          <motion.div
                             layoutId="aura"
                             className="absolute inset-0 rounded-xl ring-4 ring-red-500/20 animate-pulse pointer-events-none"
                           />
@@ -1106,9 +1100,9 @@ export default function WorldcupCreatePage() {
                   </div>
                 </div>
 
-                <div 
+                <div
                   className="grid grid-cols-2 md:grid-cols-3 gap-8 min-h-[40vh] max-h-[55vh] overflow-y-auto pr-4 custom-scrollbar"
-                  style={{ 
+                  style={{
                     '--theme-primary': themeColors.primary,
                     '--theme-secondary': themeColors.secondary,
                     '--theme-contrast': getContrastColor(themeColors.primary) === 'black' ? '#000000' : '#FFFFFF'
@@ -1117,7 +1111,7 @@ export default function WorldcupCreatePage() {
                   {isSearching && (
                     <div className="col-span-full py-24 flex flex-col items-center justify-center space-y-8">
                       <div className="relative">
-                        <motion.div 
+                        <motion.div
                           animate={{ rotate: 360 }}
                           transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
                           style={{ borderColor: 'var(--theme-primary)', borderTopColor: 'transparent' }}
@@ -1127,18 +1121,18 @@ export default function WorldcupCreatePage() {
                           <Search className="w-8 h-8 animate-pulse text-[var(--theme-primary)]" />
                         </div>
                       </div>
-                      
+
                       <div className="text-center space-y-4">
                         <div className="h-8 flex items-center justify-center">
-                          <TypingEffect 
+                          <TypingEffect
                             primaryColor={themeColors.primary}
                             text={
-                              detectedGroup && detectedSong 
+                              detectedGroup && detectedSong
                                 ? `AI가 [${detectedGroup}]의 [${detectedSong}] 영상을 발굴하는 중...`
                                 : detectedGroup
-                                ? `AI가 [${detectedGroup}] 공식 데이터를 분석 중...`
-                                : `AI가 유튜브에서 가장 '정품'에 가까운 영상을 필터링 중...`
-                            } 
+                                  ? `AI가 [${detectedGroup}] 공식 데이터를 분석 중...`
+                                  : `AI가 유튜브에서 가장 '정품'에 가까운 영상을 필터링 중...`
+                            }
                           />
                         </div>
                         {detectedGroup && <ScanLog group={detectedGroup} primaryColor={themeColors.primary} />}
@@ -1146,103 +1140,67 @@ export default function WorldcupCreatePage() {
                     </div>
                   )}
                   {searchResults
-                    .filter(video => 
+                    .filter(video =>
                       searchMode === 'seed' || !items.some(item => item.videoId === video.videoId)
                     )
                     .map((video) => (
-                    <motion.div 
-                      key={video.id}
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      onClick={() => handleAddVideo(video)}
-                      onContextMenu={(e) => {
-                        e.preventDefault()
-                        setContextMenu({ x: e.clientX, y: e.clientY, video })
-                      }}
-                      className="group cursor-pointer relative"
-                    >
-                      {/* Hover Preview Tooltip Overlay (Precision Preview) */}
-                      <div className="absolute -inset-4 z-20 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                        <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-full mb-4 w-[280px] bg-white dark:bg-zinc-800 rounded-2xl shadow-2xl border border-black/10 dark:border-white/10 p-3 scale-90 group-hover:scale-100 transition-transform origin-bottom backdrop-blur-xl">
-                          <img src={video.thumbnail} className="w-full aspect-video rounded-xl object-cover mb-2" alt="preview" />
-                          <p className="text-xs font-bold leading-tight line-clamp-2 mb-1">{video.title}</p>
-                          <div className="flex items-center justify-between text-[10px] font-black text-zinc-400">
-                            <span>{video.publishedAt ? new Date(video.publishedAt).toLocaleDateString() : 'Date N/A'}</span>
-                            <span className="text-red-500">CLICK TO SELECT</span>
+                      <motion.div
+                        key={video.id}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        onClick={() => handleAddVideo(video)}
+                        onContextMenu={(e) => {
+                          e.preventDefault()
+                          setContextMenu({ x: e.clientX, y: e.clientY, video })
+                        }}
+                        className="group cursor-pointer relative"
+                      >
+                        {/* Hover Preview Tooltip */}
+                        <div className="absolute -inset-4 z-20 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                          <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-full mb-4 w-[280px] bg-white dark:bg-zinc-800 rounded-2xl shadow-2xl border border-black/10 dark:border-white/10 p-3 scale-90 group-hover:scale-100 transition-transform origin-bottom backdrop-blur-xl">
+                            <img src={video.thumbnail} className="w-full aspect-video rounded-xl object-cover mb-2" alt="preview" />
+                            <p className="text-xs font-bold leading-tight line-clamp-2 mb-1">{video.title}</p>
+                            <div className="flex items-center justify-between text-[10px] font-black text-zinc-400">
+                              <span>{video.publishedAt ? new Date(video.publishedAt).toLocaleDateString() : 'Date N/A'}</span>
+                              <span className="text-red-500">CLICK TO SELECT</span>
+                            </div>
+                            <div className="absolute bottom-[-8px] left-1/2 -translate-x-1/2 w-4 h-4 bg-white dark:bg-zinc-800 rotate-45 border-r border-b border-black/10 dark:border-white/10" />
                           </div>
-                          <div className="absolute bottom-[-8px] left-1/2 -translate-x-1/2 w-4 h-4 bg-white dark:bg-zinc-800 rotate-45 border-r border-b border-black/10 dark:border-white/10" />
                         </div>
-                      </div>
 
-                      <div className="relative aspect-video rounded-[1.5rem] overflow-hidden bg-zinc-100 dark:bg-zinc-800 border border-black/5 dark:border-white/5 mb-3 group-hover:shadow-xl transition-all">
-                        <img src={video.thumbnail} alt={video.title} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
-                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-center justify-center">
-                          <Plus className="w-12 h-12 text-white opacity-0 group-hover:opacity-100 transition-all scale-50 group-hover:scale-110" />
+                        <div className="relative aspect-video rounded-[1.5rem] overflow-hidden bg-zinc-100 dark:bg-zinc-800 border border-black/5 dark:border-white/5 mb-3 group-hover:shadow-xl transition-all">
+                          <img src={video.thumbnail} alt={video.title} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
+                          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-center justify-center">
+                            <Plus className="w-12 h-12 text-white opacity-0 group-hover:opacity-100 transition-all scale-50 group-hover:scale-110" />
+                          </div>
                         </div>
-                        {selectedScanItems.includes(video.videoId || '') && (
-                          <div className="absolute inset-x-0 bottom-0 bg-red-600 py-1 flex items-center justify-center gap-1.5 z-10">
-                            <CheckCircle2 className="w-3 h-3 text-white" />
-                            <span className="text-[10px] font-black text-white uppercase tracking-tighter">Selected For Bulk Add</span>
-                          </div>
-                        )}
-                      </div>
-                      <div className="px-1">
-                        <p className="text-sm font-black line-clamp-2 leading-relaxed group-hover:text-red-600 transition-colors flex items-start gap-1">
-                          {video.isOfficial && (
-                            <CheckCircle2 className="w-3.5 h-3.5 text-blue-500 fill-current shrink-0 mt-0.5" />
-                          )}
-                          {video.title}
-                        </p>
-                        {video.publishedAt && (
-                          <p className="text-[10px] font-bold text-zinc-400 mt-1">{new Date(video.publishedAt).getFullYear()}년</p>
-                        )}
-                      </div>
-                    </motion.div>
-                  ))}
-                  {searchResults.filter(v => 
-                    searchMode === 'seed' || !items.some(it => it.videoId === v.videoId)
-                  ).length === 0 && !isSearching && (
-                    <div className="col-span-full py-24 text-center space-y-6">
-                      {searchError === 'QUOTA' ? (
-                        <>
-                          <div className="w-24 h-24 bg-red-50 dark:bg-red-900/20 rounded-full flex items-center justify-center mx-auto mb-4 border border-red-100 dark:border-red-800/20 shadow-xl">
-                            <AlertCircle className="w-12 h-12 text-red-500 animate-bounce" />
-                          </div>
-                          <div className="space-y-2">
-                            <p className="text-red-600 dark:text-red-400 font-black text-2xl">YouTube API 할당량이 소진되었습니다!</p>
-                            <p className="text-zinc-500 font-bold max-w-md mx-auto">
-                              오늘의 무료 검색 한도가 모두 소진되었습니다. 구글 클라우드 콘솔에서 한도를 확인하거나, 잠시 후 다시 시도해 주세요.
-                            </p>
-                          </div>
-                          <div className="flex justify-center gap-4 mt-8">
-                            <a 
-                              href="https://console.cloud.google.com/apis/dashboard" 
-                              target="_blank" 
-                              className="px-6 py-3 bg-red-600 text-white rounded-xl font-black text-sm shadow-lg shadow-red-500/30 hover:scale-105 transition-transform"
-                            >
-                              GCP 콘솔 확인하기
-                            </a>
-                          </div>
-                        </>
-                      ) : (
-                        <>
-                          <div className="w-20 h-20 bg-zinc-50 dark:bg-zinc-800 rounded-full flex items-center justify-center mx-auto mb-4 border border-black/5 dark:border-white/5">
-                            <Youtube className="w-10 h-10 text-zinc-200 dark:text-zinc-600" />
-                          </div>
-                          <p className="text-zinc-400 font-bold text-lg">
-                            {searchResults.length > 0 ? "모든 검색 결과가 이미 추가되었습니다." : "검색 결과가 없습니다. 다른 키워드로 검색해 보세요."}
+                        <div className="px-1">
+                          <p className="text-sm font-black line-clamp-2 leading-relaxed group-hover:text-red-600 transition-colors flex items-start gap-1">
+                            {video.isOfficial && (
+                              <CheckCircle2 className="w-3.5 h-3.5 text-blue-500 fill-current shrink-0 mt-0.5" />
+                            )}
+                            {video.title}
                           </p>
-                          <p className="text-zinc-500 text-sm">할당량 보호를 위해 최적화된 결과만 표시됩니다.</p>
-                        </>
-                      )}
+                          {video.publishedAt && (
+                            <p className="text-[10px] font-bold text-zinc-400 mt-1">{new Date(video.publishedAt).getFullYear()}년</p>
+                          )}
+                        </div>
+                      </motion.div>
+                    ))}
+                  {searchResults.length === 0 && !isSearching && (
+                    <div className="col-span-full py-24 text-center space-y-6">
+                      <div className="w-20 h-20 bg-zinc-50 dark:bg-zinc-800 rounded-full flex items-center justify-center mx-auto mb-4 border border-black/5 dark:border-white/5">
+                        <Youtube className="w-10 h-10 text-zinc-200 dark:text-zinc-600" />
+                      </div>
+                      <p className="text-zinc-400 font-bold text-lg">검색 결과가 없습니다. 다른 키워드로 검색해 보세요.</p>
                     </div>
                   )}
                 </div>
 
-                {/* Magic Scan Results Overlay */}
+                {/* Magic Scan Overlay */}
                 <AnimatePresence>
                   {magicScanResults.length > 0 && (
-                    <motion.div 
+                    <motion.div
                       initial={{ opacity: 0, x: 100 }}
                       animate={{ opacity: 1, x: 0 }}
                       exit={{ opacity: 0, x: 100 }}
@@ -1259,13 +1217,13 @@ export default function WorldcupCreatePage() {
                           </div>
                         </div>
                         <div className="flex items-center gap-4">
-                          <button 
+                          <button
                             onClick={() => { setMagicScanResults([]); setSelectedScanItems([]); }}
                             className="px-6 py-3 rounded-xl font-black text-zinc-500 hover:bg-black/5 dark:hover:bg-white/5 transition-all"
                           >
                             취소
                           </button>
-                          <button 
+                          <button
                             disabled={selectedScanItems.length === 0}
                             onClick={addSelectedScanItems}
                             className="px-8 py-3 rounded-xl bg-violet-600 text-white font-black shadow-lg shadow-violet-500/30 hover:scale-105 active:scale-95 transition-all disabled:opacity-30 flex items-center gap-3"
@@ -1277,17 +1235,15 @@ export default function WorldcupCreatePage() {
                       </div>
                       <div className="flex-1 overflow-y-auto p-10 grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6 custom-scrollbar">
                         {magicScanResults.map((v) => (
-                          <motion.div 
+                          <motion.div
                             key={v.videoId}
                             onClick={() => toggleScanItem(v.videoId || '')}
-                            className={`group cursor-pointer relative rounded-2xl overflow-hidden border-2 transition-all ${
-                              selectedScanItems.includes(v.videoId || '') 
-                                ? 'border-violet-600 ring-4 ring-violet-500/20 scale-95' 
+                            className={`group cursor-pointer relative rounded-2xl overflow-hidden border-2 transition-all ${selectedScanItems.includes(v.videoId || '')
+                                ? 'border-violet-600 ring-4 ring-violet-500/20 scale-95'
                                 : 'border-transparent hover:border-violet-300'
-                            }`}
+                              }`}
                           >
                             <img src={v.thumbnail} className="w-full aspect-video object-cover" alt="thumb" />
-                            <div className={`absolute inset-0 bg-violet-600/20 transition-opacity ${selectedScanItems.includes(v.videoId || '') ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`} />
                             <div className="absolute inset-x-0 bottom-0 p-3 bg-gradient-to-t from-black/80 to-transparent">
                               <p className="text-[10px] font-black text-white line-clamp-2 leading-tight">{v.title}</p>
                             </div>
@@ -1303,63 +1259,52 @@ export default function WorldcupCreatePage() {
                   )}
                 </AnimatePresence>
 
-                {/* Magic Scan Loading Overlay */}
+                {/* Magic Scan Loading */}
                 <AnimatePresence>
                   {isScanningChannel && (
-                    <motion.div 
+                    <motion.div
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
                       exit={{ opacity: 0 }}
                       className="absolute inset-0 bg-white/80 dark:bg-zinc-900/80 backdrop-blur-xl z-[60] flex flex-col items-center justify-center p-10"
                     >
-                      <motion.div 
+                      <motion.div
                         animate={{ rotate: 360 }}
                         transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
                         className="w-20 h-20 rounded-[2rem] border-4 border-violet-600 border-t-transparent shadow-2xl shadow-violet-500/20 mb-8"
                       />
                       <h3 className="text-3xl font-black italic mb-4">채널 터는 중... ✨</h3>
-                      <p className="text-lg font-bold text-zinc-500 text-center max-w-md">
-                        업로드 플레이리스트(UU) 우회 경로를 통해<br />
-                        AI가 채널의 모든 영상을 전수 조사하고 있습니다.
-                      </p>
+                      <p className="text-lg font-bold text-zinc-500 text-center max-w-md">업로드 플레이리스트(UU) 우회 경로를 통해 전수 조사하고 있습니다.</p>
                     </motion.div>
                   )}
                 </AnimatePresence>
               </div>
             </motion.div>
 
-            {/* Custom Context Menu */}
+            {/* Context Menu */}
             <AnimatePresence>
               {contextMenu && (
-                <motion.div 
-                   initial={{ opacity: 0, scale: 0.9, y: -10 }}
-                   animate={{ opacity: 1, scale: 1, y: 0 }}
-                   exit={{ opacity: 0, scale: 0.9 }}
-                   style={{ top: contextMenu.y, left: contextMenu.x }}
-                   className="fixed z-[300] w-64 bg-white dark:bg-zinc-800 rounded-2xl shadow-2xl border border-black/10 dark:border-white/10 overflow-hidden backdrop-blur-xl"
-                   onClick={(e) => e.stopPropagation()}
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.9, y: -10 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.9 }}
+                  style={{ top: contextMenu.y, left: contextMenu.x }}
+                  className="fixed z-[300] w-64 bg-white dark:bg-zinc-800 rounded-2xl shadow-2xl border border-black/10 dark:border-white/10 overflow-hidden backdrop-blur-xl"
+                  onClick={(e) => e.stopPropagation()}
                 >
                   <div className="p-3 border-b border-black/5 dark:border-white/5 bg-zinc-50/50 dark:bg-zinc-900/50">
                     <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-1">Channel Option</p>
-                    <p className="text-xs font-bold truncate text-zinc-600 dark:text-zinc-300">
-                      {contextMenu.video.channelTitle}
-                    </p>
+                    <p className="text-xs font-bold truncate text-zinc-600 dark:text-zinc-300">{contextMenu.video.channelTitle}</p>
                   </div>
                   <div className="p-1.5">
-                    <button 
+                    <button
                       onClick={() => handleMagicScan(contextMenu.video.channelId || '')}
                       className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-violet-600 hover:text-white transition-all text-sm font-black text-violet-600"
                     >
-                      <Sparkles className="w-4 h-4" />
-                      Magic Scan (채널 털기)
+                      <Sparkles className="w-4 h-4" /> Magic Scan (채널 털기)
                     </button>
                     <button className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-zinc-100 dark:hover:bg-white/5 transition-all text-sm font-bold text-zinc-500">
-                      <ListVideo className="w-4 h-4" />
-                      재생목록 보기
-                    </button>
-                    <button className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-zinc-100 dark:hover:bg-white/5 transition-all text-sm font-bold text-zinc-500">
-                      <BarChart3 className="w-4 h-4" />
-                      AI 분석 리포트
+                      <ListVideo className="w-4 h-4" /> 재생목록 보기
                     </button>
                   </div>
                 </motion.div>
@@ -1373,14 +1318,14 @@ export default function WorldcupCreatePage() {
       <AnimatePresence>
         {showPlaylistModal && (
           <div className="fixed inset-0 z-[250] flex items-center justify-center p-6">
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setShowPlaylistModal(false)}
               className="absolute inset-0 bg-black/60 backdrop-blur-sm dark:bg-black/80"
             />
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
@@ -1392,12 +1337,16 @@ export default function WorldcupCreatePage() {
                     <ListVideo className="w-6 h-6" />
                   </div>
                   <div>
-                    <h3 className="text-2xl font-black italic">Playlist Detected</h3>
-                    <p className="text-sm font-bold text-zinc-400">{playlistItems.length}개의 영상을 발견했습니다.</p>
+                    <h3 className="text-2xl font-black italic">
+                      {isFetchingPlaylist ? 'Playlist Analyzing...' : 'Playlist Detected'}
+                    </h3>
+                    <p className="text-sm font-bold text-zinc-400">
+                      {isFetchingPlaylist ? '재생목록을 분석 중입니다... 뚝딱뚝딱 ✨' : `${playlistItems.length}개의 영상을 발견했습니다.`}
+                    </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
-                  <button 
+                  <button
                     onClick={() => {
                       if (selectedPlaylistItems.length === playlistItems.length) setSelectedPlaylistItems([])
                       else setSelectedPlaylistItems(playlistItems.map(v => v.videoId || ''))
@@ -1406,10 +1355,7 @@ export default function WorldcupCreatePage() {
                   >
                     {selectedPlaylistItems.length === playlistItems.length ? '전체 해제' : '전체 선택'}
                   </button>
-                  <button 
-                    onClick={() => setShowPlaylistModal(false)}
-                    className="w-10 h-10 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center justify-center transition-colors"
-                  >
+                  <button onClick={() => setShowPlaylistModal(false)} className="w-10 h-10 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center justify-center transition-colors">
                     <X className="w-5 h-5 text-zinc-400" />
                   </button>
                 </div>
@@ -1417,20 +1363,19 @@ export default function WorldcupCreatePage() {
 
               <div className="flex-1 overflow-y-auto p-10 grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6 custom-scrollbar">
                 {playlistItems.map((v) => (
-                  <motion.div 
+                  <motion.div
                     key={v.id}
                     onClick={() => {
-                      setSelectedPlaylistItems(prev => 
-                        prev.includes(v.videoId || '') 
-                          ? prev.filter(id => id !== v.videoId) 
+                      setSelectedPlaylistItems(prev =>
+                        prev.includes(v.videoId || '')
+                          ? prev.filter(id => id !== v.videoId)
                           : [...prev, v.videoId || '']
                       )
                     }}
-                    className={`group cursor-pointer relative rounded-2xl overflow-hidden border-2 transition-all ${
-                      selectedPlaylistItems.includes(v.videoId || '') 
-                        ? 'border-violet-600 ring-4 ring-violet-500/20 scale-95 shadow-xl' 
+                    className={`group cursor-pointer relative rounded-2xl overflow-hidden border-2 transition-all ${selectedPlaylistItems.includes(v.videoId || '')
+                        ? 'border-violet-600 ring-4 ring-violet-500/20 scale-95 shadow-xl'
                         : 'border-zinc-100 dark:border-zinc-800 hover:border-violet-300'
-                    }`}
+                      }`}
                   >
                     <div className="aspect-video relative overflow-hidden bg-zinc-200 dark:bg-zinc-800">
                       <img src={v.thumbnail} className="w-full h-full object-cover" alt="thumb" />
@@ -1448,7 +1393,7 @@ export default function WorldcupCreatePage() {
               </div>
 
               <div className="p-8 bg-zinc-50 dark:bg-zinc-900/50 border-t border-zinc-100 dark:border-zinc-800 flex justify-center shrink-0">
-                <button 
+                <button
                   disabled={selectedPlaylistItems.length === 0}
                   onClick={addSelectedPlaylistItems}
                   className="px-12 py-4 rounded-2xl bg-zinc-900 dark:bg-white text-white dark:text-black font-black text-lg shadow-xl hover:scale-105 active:scale-95 transition-all disabled:opacity-30 flex items-center gap-3"
@@ -1462,26 +1407,12 @@ export default function WorldcupCreatePage() {
         )}
       </AnimatePresence>
 
-      {/* Ads Mock (Visible for non-plus users) */}
-      {!isPlus && step !== 2 && (
-        <div className="mt-20 max-w-4xl mx-auto p-8 rounded-3xl bg-zinc-100 dark:bg-zinc-900 border border-dashed border-zinc-300 dark:border-zinc-700 text-center">
-          <p className="text-zinc-500 text-xs font-bold uppercase tracking-widest mb-4">ADVERTISEMENT</p>
-          <div className="h-24 flex items-center justify-center text-zinc-400">
-            <Target className="w-8 h-8 opacity-20 mr-4" />
-            광고 슬롯 - 플러스 멤버십으로 제거 가능
-          </div>
-        </div>
-      )}
-
-      <PlusNudgeModal 
-        isOpen={showNudge} 
-        onClose={() => setShowNudge(false)} 
-        reason={nudgeReason} 
-      />
+      <PlusNudgeModal isOpen={showNudge} onClose={() => setShowNudge(false)} reason={nudgeReason} />
     </div>
   )
 }
 
+// TypingEffect, ScanLog, getContrastColor 등 기존 하단 유틸리티 함수 및 컴포넌트 전체 유지
 function TypingEffect({ text, primaryColor }: { text: string, primaryColor?: string }) {
   const [displayedText, setDisplayedText] = useState('')
   const [index, setIndex] = useState(0)
@@ -1502,13 +1433,13 @@ function TypingEffect({ text, primaryColor }: { text: string, primaryColor?: str
   }, [index, text])
 
   return (
-    <motion.p 
+    <motion.p
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       className="text-xl font-black italic text-zinc-600 dark:text-zinc-300 tracking-tight"
     >
       {displayedText}
-      <motion.span 
+      <motion.span
         animate={{ opacity: [0, 1, 0], backgroundColor: primaryColor || '#dc2626' }}
         transition={{ duration: 0.8, repeat: Infinity }}
         className="inline-block w-1.5 h-6 ml-1 translate-y-1"
@@ -1553,7 +1484,7 @@ function ScanLog({ group, primaryColor }: { group: string, primaryColor?: string
         {[...Array(5)].map((_, i) => (
           <motion.div
             key={i}
-            animate={{ 
+            animate={{
               height: [2, Math.random() * 8 + 4, 2],
               opacity: [0.3, 1, 0.3],
               backgroundColor: primaryColor || '#ef4444'
@@ -1571,7 +1502,6 @@ function ScanLog({ group, primaryColor }: { group: string, primaryColor?: string
   )
 }
 
-// 밝기 계산하여 텍스트 색상 결정 (Contrast Guard)
 function getContrastColor(hex: string): 'black' | 'white' {
   if (!hex || hex.length < 7) return 'white'
   const r = parseInt(hex.slice(1, 3), 16)
@@ -1581,8 +1511,8 @@ function getContrastColor(hex: string): 'black' | 'white' {
   return (yiq >= 128) ? 'black' : 'white'
 }
 
-function ItemCard({ item, onDelete, onMove }: { 
-  item: WorldcupItem, 
+function ItemCard({ item, onDelete, onMove }: {
+  item: WorldcupItem,
   onDelete: (id: string) => void,
   onMove?: (id: string, team: 'A' | 'B' | 'Neutral') => void
 }) {
@@ -1590,7 +1520,7 @@ function ItemCard({ item, onDelete, onMove }: {
   const [isDragging, setIsDragging] = React.useState(false)
 
   return (
-    <motion.div 
+    <motion.div
       layout
       initial="initial"
       whileHover="hover"
@@ -1598,7 +1528,7 @@ function ItemCard({ item, onDelete, onMove }: {
       variants={{
         initial: { opacity: 0, scale: 0.9 },
         animate: { opacity: 1, scale: 1 },
-        hover: { 
+        hover: {
           scale: 1.1,
           boxShadow: [
             `0 0 0 0px ${accentPrimary}00`,
@@ -1617,12 +1547,10 @@ function ItemCard({ item, onDelete, onMove }: {
       onDragEnd={(e, info) => {
         setIsDragging(false)
         if (!onMove) return
-        
-        // 정밀한 Hit Detection을 위해 elementFromPoint 좌표 보정 혹은 여러 포인트 체크 가능하지만 
-        // pointer-events-none이 이미 적용되어 있으므로 elementFromPoint가 잘 작동할 것
+
         const element = document.elementFromPoint(info.point.x, info.point.y)
         const zone = element?.closest('[id$="-zone"]') || element?.querySelector('[id$="-zone"]')
-        
+
         if (zone) {
           const zoneId = zone.id
           if (zoneId === 'team-a-zone' && item.team !== 'A') onMove(item.id, 'A')
@@ -1630,21 +1558,22 @@ function ItemCard({ item, onDelete, onMove }: {
           else if (zoneId === 'waiting-room-zone' && item.team !== 'Neutral') onMove(item.id, 'Neutral')
         }
       }}
-      className={`group relative aspect-video rounded-[1.5rem] overflow-hidden border border-black/5 dark:border-white/5 bg-zinc-100 dark:bg-zinc-800 shadow-lg cursor-grab active:cursor-grabbing hover:z-50 ${isDragging ? 'pointer-events-none z-50' : 'z-20'}`}
+      className={`group relative aspect-video rounded-[1.5rem] overflow-hidden border transition-all duration-300 bg-zinc-100 dark:bg-slate-800 shadow-lg cursor-grab active:cursor-grabbing hover:z-50 ${isDragging ? 'pointer-events-none z-50 ring-4 ring-violet-500/50' : 'z-20 border-black/5 dark:border-violet-500/30'
+        }`}
     >
       <img src={item.thumbnail} alt={item.title} className="absolute inset-0 w-full h-full object-cover transition-transform duration-500" />
       <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent opacity-60 transition-opacity group-hover:opacity-80" />
       <div className="absolute inset-x-0 bottom-0 p-4 transform translate-y-1 transition-transform group-hover:translate-y-0">
         <p className="text-[10px] font-black text-violet-400 uppercase tracking-widest mb-1 opacity-0 group-hover:opacity-100 transition-opacity">CANDIDATE</p>
-        <p className="text-sm font-black text-white truncate drop-shadow-md">{item.title}</p>
+        <p className="text-sm font-black text-white truncate drop-shadow-lg shadow-black">{item.title}</p>
       </div>
-      <motion.button 
+      <motion.button
         variants={{
-          initial: { opacity: 0, scale: 0.5 },
-          hover: { opacity: 1, scale: 1 }
+          initial: { opacity: 0, scale: 0.5, x: 10 },
+          hover: { opacity: 1, scale: 1, x: 0 }
         }}
         onClick={(e) => { e.stopPropagation(); onDelete(item.id); }}
-        className="absolute top-3 right-3 w-8 h-8 rounded-lg bg-red-600 text-white flex items-center justify-center transition-all hover:scale-110 active:scale-90 z-30 shadow-lg"
+        className="absolute top-3 right-3 w-8 h-8 rounded-full bg-red-600/90 hover:bg-red-600 text-white flex items-center justify-center transition-all hover:scale-110 active:scale-90 z-30 shadow-xl backdrop-blur-sm border border-white/20"
       >
         <X className="w-4 h-4" />
       </motion.button>
