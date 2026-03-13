@@ -328,8 +328,8 @@ function WorldCupCard({ wc }: { wc: any }) {
           
           <BoosterButton 
             boosterCount={dummyBoosterCount} 
-            label={dummyBoosterCount > 0 ? `부스터 ${dummyBoosterCount}` : '부스터 0'}
-            className="!h-7 !px-2 !min-w-[70px] !text-[10px] scale-90 origin-right -mr-1" 
+            label="부스터"
+            className="!h-7 !px-2 !min-w-[50px] !text-[10px] scale-90 origin-right -mr-1" 
           />
         </div>
         <h3 className="font-semibold text-sm line-clamp-2 group-hover:brightness-110 mb-auto transition-colors" style={{ color: 'var(--accent-2)' }}>{wc.title}</h3>
