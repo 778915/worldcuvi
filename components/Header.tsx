@@ -497,11 +497,7 @@ export default function Header() {
                       <div className="py-8 flex flex-col items-center justify-center text-center">
                         <Zap className="w-12 h-12 mb-4 opacity-30" style={{ color: 'var(--accent-1)' }} />
                         <p className="text-sm mb-6 font-medium text-zinc-500">현재 가동 중인 부스터가 없습니다.</p>
-                        <BoosterButton 
-                          label="부스터 1개 구매 (9,900 P)" 
-                          isFullPower={true}
-                          className="!w-full !max-w-[240px] !mx-auto !mt-2"
-                        />
+
                       </div>
                     ) : (
                       <>

@@ -58,6 +58,7 @@ interface WorldcupItem {
   channelId?: string
   channelTitle?: string
   isOfficial?: boolean
+  isBye?: boolean
 }
 
 const BRIEFING_MESSAGES = [
@@ -135,6 +136,78 @@ export default function WorldcupCreatePage() {
       return () => clearTimeout(timer)
     }
   }, [isAnalyzing, analysisProgress])
+
+  // [부전승] 자동 계산 로직
+  useEffect(() => {
+    if (items.length <= 1) return;
+
+    // 현재 개수보다 작은 가장 큰 2의 거듭제곱 (16강 이상일 경우 16)
+    const getTargetSize = (n: number) => {
+      if (n > 16) return 16;
+      let t = 1;
+      while (t * 2 <= n) t *= 2;
+      return t;
+    };
+
+    const n = items.length;
+    const t = getTargetSize(n);
+    const totalByesNeeded = 2 * t - n;
+
+    if (totalByesNeeded <= 0) {
+      if (items.some(it => it.isBye)) {
+        setItems(prev => prev.map(it => ({ ...it, isBye: false })));
+      }
+      return;
+    }
+
+    // VS 모드 균형 고려한 부전승 배정
+    const assignByes = () => {
+      const teamA = items.filter(it => it.team === 'A');
+      const teamB = items.filter(it => it.team === 'B');
+      
+      let newItems = [...items].map(it => ({ ...it, isBye: false }));
+
+      if (aiResult?.is_vs_mode) {
+        // VS 모드 부전승 배정 원칙:
+        // 1. 전체 부전승 수(totalByesNeeded)를 맞춘다.
+        // 2. 두 팀의 매치 참여 인원수를 동일하게 맞춘다.
+        // 매치 참여 인원 (n - totalByesNeeded) = 2 * MatchPairs
+        const matchPairs = (n - totalByesNeeded) / 2;
+        
+        // 각 팀에서 남는 사람들은 부전승
+        const aByesCount = Math.max(0, teamA.length - matchPairs);
+        const bByesCount = Math.max(0, teamB.length - matchPairs);
+
+        const shuffle = (arr: any[]) => [...arr].sort(() => Math.random() - 0.5);
+        
+        const aIndices = newItems.reduce((acc, it, idx) => it.team === 'A' ? [...acc, idx] : acc, [] as number[]);
+        const bIndices = newItems.reduce((acc, it, idx) => it.team === 'B' ? [...acc, idx] : acc, [] as number[]);
+        
+        const aByesIdx = shuffle(aIndices).slice(0, aByesCount);
+        const bByesIdx = shuffle(bIndices).slice(0, bByesCount);
+        
+        [...aByesIdx, ...bByesIdx].forEach(idx => { newItems[idx].isBye = true; });
+      } else {
+        // 일반 모드: 전체에서 랜덤 배정
+        const indices = Array.from({ length: n }, (_, i) => i).sort(() => Math.random() - 0.5);
+        indices.slice(0, totalByesNeeded).forEach(idx => { newItems[idx].isBye = true; });
+      }
+
+      // 상태 변경이 실제로 필요할 때만 업데이트 (무한 루프 방지)
+      const currentByeIds = items.filter(it => it.isBye).map(it => it.id).sort().join(',');
+      const newByeIds = newItems.filter(it => it.isBye).map(it => it.id).sort().join(',');
+      
+      if (currentByeIds !== newByeIds) {
+        setItems(newItems);
+        setGamificationMsg(n > 16 
+          ? `랜덤 부전승 제도가 적용되었습니다. ${totalByesNeeded}개 항목이 16강으로 직행합니다! ✨`
+          : `랜덤 부전승 제도가 적용되었습니다. ${totalByesNeeded}개 항목이 다음 라운드로 직행합니다! ✨`
+        );
+      }
+    };
+
+    assignByes();
+  }, [items.length, aiResult?.is_vs_mode]);
 
   const handleStartAnalysis = async (e?: React.FormEvent, overrideVideoId?: string, overrideThumbnail?: string, overrideTitle?: string, bulkItems?: WorldcupItem[]) => {
     e?.preventDefault()
@@ -651,8 +724,8 @@ export default function WorldcupCreatePage() {
                               setTimeout(() => setIsTitleUpgraded(false), 2000)
                             }}
                             className={`text-left p-4 rounded-2xl border transition-all text-sm font-bold flex items-center justify-between group ${title === recTitle
-                                ? 'bg-violet-600 border-violet-600 text-white shadow-lg shadow-violet-600/20'
-                                : 'bg-zinc-50 dark:bg-slate-800 border-transparent hover:border-violet-500/30'
+                              ? 'bg-violet-600 border-violet-600 text-white shadow-lg shadow-violet-600/20'
+                              : 'bg-zinc-50 dark:bg-slate-800 border-transparent hover:border-violet-500/30'
                               }`}
                           >
                             <span className="line-clamp-1">{recTitle}</span>
@@ -1084,8 +1157,8 @@ export default function WorldcupCreatePage() {
                           handleSearch(undefined, newOrder)
                         }}
                         className={`px-6 py-3 rounded-xl text-sm font-black transition-all relative ${searchOrder === order.id
-                            ? 'bg-white dark:bg-zinc-700 text-red-600 shadow-xl'
-                            : 'text-zinc-500 hover:text-zinc-700 dark:text-zinc-400'
+                          ? 'bg-white dark:bg-zinc-700 text-red-600 shadow-xl'
+                          : 'text-zinc-500 hover:text-zinc-700 dark:text-zinc-400'
                           }`}
                       >
                         {searchOrder === order.id && (
@@ -1239,8 +1312,8 @@ export default function WorldcupCreatePage() {
                             key={v.videoId}
                             onClick={() => toggleScanItem(v.videoId || '')}
                             className={`group cursor-pointer relative rounded-2xl overflow-hidden border-2 transition-all ${selectedScanItems.includes(v.videoId || '')
-                                ? 'border-violet-600 ring-4 ring-violet-500/20 scale-95'
-                                : 'border-transparent hover:border-violet-300'
+                              ? 'border-violet-600 ring-4 ring-violet-500/20 scale-95'
+                              : 'border-transparent hover:border-violet-300'
                               }`}
                           >
                             <img src={v.thumbnail} className="w-full aspect-video object-cover" alt="thumb" />
@@ -1373,8 +1446,8 @@ export default function WorldcupCreatePage() {
                       )
                     }}
                     className={`group cursor-pointer relative rounded-2xl overflow-hidden border-2 transition-all ${selectedPlaylistItems.includes(v.videoId || '')
-                        ? 'border-violet-600 ring-4 ring-violet-500/20 scale-95 shadow-xl'
-                        : 'border-zinc-100 dark:border-zinc-800 hover:border-violet-300'
+                      ? 'border-violet-600 ring-4 ring-violet-500/20 scale-95 shadow-xl'
+                      : 'border-zinc-100 dark:border-zinc-800 hover:border-violet-300'
                       }`}
                   >
                     <div className="aspect-video relative overflow-hidden bg-zinc-200 dark:bg-zinc-800">
@@ -1567,6 +1640,13 @@ function ItemCard({ item, onDelete, onMove }: {
         <p className="text-[10px] font-black text-violet-400 uppercase tracking-widest mb-1 opacity-0 group-hover:opacity-100 transition-opacity">CANDIDATE</p>
         <p className="text-sm font-black text-white truncate drop-shadow-lg shadow-black">{item.title}</p>
       </div>
+
+      {item.isBye && (
+        <div className="absolute top-3 left-3 px-3 py-1 bg-amber-500 text-white text-[10px] font-black rounded-full shadow-lg z-30 animate-bounce">
+          부전승 (Bye)
+        </div>
+      )}
+
       <motion.button
         variants={{
           initial: { opacity: 0, scale: 0.5, x: 10 },
