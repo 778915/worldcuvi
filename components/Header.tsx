@@ -282,7 +282,7 @@ export default function Header() {
                 onClick={(e) => togglePopover(e, 'profile')}
                 onMouseEnter={(e) => handleMouseEnter(e, 'profile')}
                 onMouseLeave={handleMouseLeave}
-                className="transition-all flex items-center gap-1.5 rounded-lg px-1.5 py-1 hover:bg-black/5 dark:hover:bg-white/5 group profile-trigger"
+                className="transition-all flex items-center gap-1.5 rounded-lg px-1.5 py-1 hover:bg-black/5 dark:hover:bg-white/5 group profile-trigger login-aura-effect"
               >
                 <div className="profile-avatar-container w-8 h-8 rounded-full overflow-hidden ring-2 transition-all duration-300 group-hover:z-10" style={{ '--tw-ring-color': `color-mix(in srgb, var(--accent-1) 50%, transparent)` } as React.CSSProperties}>
                   {avatarSrc ? (

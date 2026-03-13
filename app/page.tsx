@@ -314,6 +314,13 @@ function WorldCupCard({ wc }: { wc: any }) {
     <Link href={`/worldcup/${wc.id}`} className="card-hover group relative bg-white dark:bg-zinc-900 border border-black/5 dark:border-white/5 rounded-2xl overflow-hidden shadow-sm flex flex-col">
       <div className="aspect-video relative overflow-hidden bg-zinc-200 dark:bg-zinc-800">
         {wc.thumb && <img src={wc.thumb} alt={wc.title} className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />}
+        <div className="absolute top-2 right-2 z-10">
+          <BoosterButton 
+            boosterCount={dummyBoosterCount} 
+            label=""
+            className="!h-7 !w-7 !p-0 !min-w-0 !rounded-lg scale-90" 
+          />
+        </div>
       </div>
       <div className="p-3 flex-1 flex flex-col">
         <div className="flex items-center justify-between mb-1.5">
@@ -325,12 +332,6 @@ function WorldCupCard({ wc }: { wc: any }) {
               color: 'var(--accent-2)'
             }}
           >{wc.category}</span>
-          
-          <BoosterButton 
-            boosterCount={dummyBoosterCount} 
-            label="부스터"
-            className="!h-7 !px-2 !min-w-[50px] !text-[10px] scale-90 origin-right -mr-1" 
-          />
         </div>
         <h3 className="font-semibold text-sm line-clamp-2 group-hover:brightness-110 mb-auto transition-colors" style={{ color: 'var(--accent-2)' }}>{wc.title}</h3>
         <p className="text-[11px] font-bold mt-2" style={{ color: 'var(--accent-2)' }}>{wc.plays.toLocaleString()} 플레이</p>
