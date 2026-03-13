@@ -307,6 +307,19 @@ export default function HomePage() {
   )
 }
 
+function CreateWorldCupCard() {
+  return (
+    <Link href="/create" className="group relative bg-white dark:bg-zinc-900 border-2 border-dashed border-zinc-300 dark:border-zinc-700 rounded-2xl overflow-hidden flex flex-col items-center justify-center aspect-video sm:aspect-auto sm:h-full transition-all hover:border-[var(--accent-1)] hover:bg-[var(--accent-1)]/5 min-h-[150px]">
+      <div className="flex flex-col items-center gap-3">
+        <div className="w-12 h-12 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-400 group-hover:bg-[var(--accent-1)] group-hover:text-white transition-all">
+          <Plus className="w-6 h-6" />
+        </div>
+        <p className="text-sm font-bold text-zinc-500 group-hover:text-[var(--accent-1)]">월드컵 만들기</p>
+      </div>
+    </Link>
+  )
+}
+
 function WorldCupCard({ wc }: { wc: any }) {
   // SSR/CSR 불일치 방지를 위해 ID 기반의 고정된 더미 데이터 생성
   const charCodeSum = wc.id.split('').reduce((acc: number, char: string) => acc + char.charCodeAt(0), 0)
