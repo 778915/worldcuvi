@@ -38,22 +38,9 @@ export interface Booster {
   rankDiff: number;
 }
 
-export const MOCK_TRENDING_WORLDCUPS: WorldCup[] = Array.from({ length: 10 }).map((_, i) => ({
-  id: `t${i}`,
-  title: `실시간 급상승 이상형 월드컵 ${i + 1}`,
-  plays: 50000 - i * 3500,
-  score: 1000 - i * 100, // Dummy score for sorting
-  category: ['연예', '스포츠', '게임', '애니', '음식'][i % 5],
-  thumb: `https://images.unsplash.com/photo-${1500000000000 + i}?q=80&w=400&h=225&fit=crop`,
-}));
+export const MOCK_TRENDING_WORLDCUPS: WorldCup[] = [];
 
-export const MOCK_NEW_WORLDCUPS: WorldCup[] = Array.from({ length: 10 }).map((_, i) => ({
-  id: `n${i}`,
-  title: `주목할만한 신규 월드컵 ${i + 1}`,
-  plays: 500 - i * 20,
-  category: ['음악', '유튜버', '영화', '드라마', '일상'][i % 5],
-  thumb: `https://images.unsplash.com/photo-${1600000000000 + i}?q=80&w=400&h=225&fit=crop`,
-}));
+export const MOCK_NEW_WORLDCUPS: WorldCup[] = [];
 
 export const MOCK_PODIUM_WORLDCUPS: WorldCup[] = [
   { id: 'p2', rank: 2, title: '2024 K-POP 아이돌', plays: 95200, category: '연예', creatorImg: 'https://i.pravatar.cc/150?u=2', thumb: 'https://images.unsplash.com/photo-1543857778-c4a1a3e0b2eb?q=80&w=400&h=225&fit=crop' },

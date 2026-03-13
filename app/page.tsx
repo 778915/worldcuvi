@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { Trophy, Flame, Star, Crown, ArrowUpRight, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Trophy, Flame, Star, Crown, ArrowUpRight, ChevronLeft, ChevronRight, Plus } from 'lucide-react'
 import { useState, useEffect, useRef } from 'react'
 
 import { MOCK_BANNERS, MOCK_TRENDING_WORLDCUPS, MOCK_NEW_WORLDCUPS, MOCK_PODIUM_WORLDCUPS } from '@/constants/mockData'
@@ -267,6 +267,7 @@ export default function HomePage() {
           <h2 className="text-2xl font-bold text-foreground">실시간 급상승 트렌드</h2>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
+          <CreateWorldCupCard />
           {MOCK_TRENDING_WORLDCUPS
             // score = (view + like*5 - unlike*10) / (hours+2)^1.5 기준으로 정렬되었다고 가정
             .slice()
@@ -284,6 +285,7 @@ export default function HomePage() {
           <h2 className="text-2xl font-bold text-foreground">새로 올라온 월드컵</h2>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
+          <CreateWorldCupCard />
           {MOCK_NEW_WORLDCUPS.map((wc) => (
             <WorldCupCard key={wc.id} wc={wc} />
           ))}
