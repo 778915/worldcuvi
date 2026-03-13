@@ -290,15 +290,17 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* ── Adsterra Native Banner ── */}
-      <section className="max-w-7xl mx-auto px-6 my-5">
-        <div 
-          id="container-12e4a722c648fd701cb97127a6784086" 
-          className="w-full min-h-[100px] flex items-center justify-center bg-black/5 dark:bg-white/5 rounded-2xl overflow-hidden"
-        >
-          <script async={true} data-cfasync="false" src="https://pl28905499.effectivegatecpm.com/12e4a722c648fd701cb97127a6784086/invoke.js"></script>
-        </div>
-      </section>
+      {/* ── Adsterra Native Banner (Production Only) ── */}
+      {process.env.NODE_ENV === 'production' && (
+        <section className="max-w-7xl mx-auto px-6 my-5">
+          <div 
+            id="container-12e4a722c648fd701cb97127a6784086" 
+            className="w-full min-h-[100px] flex items-center justify-center bg-black/5 dark:bg-white/5 rounded-2xl overflow-hidden"
+          >
+            <script async={true} data-cfasync="false" src="https://pl28905499.effectivegatecpm.com/12e4a722c648fd701cb97127a6784086/invoke.js"></script>
+          </div>
+        </section>
+      )}
     </div>
   )
 }

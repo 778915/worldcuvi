@@ -57,8 +57,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             `,
           }}
         />
-        {/* Adsterra Popunder Script */}
-        <script src="https://pl28905487.effectivegatecpm.com/da/2c/c8/da2cc85d141f9144e72f86860df06c50.js" async />
+        {/* Adsterra Popunder Script (Production Only) */}
+        {process.env.NODE_ENV === 'production' && (
+          <script src="https://pl28905487.effectivegatecpm.com/da/2c/c8/da2cc85d141f9144e72f86860df06c50.js" async />
+        )}
       </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-white min-h-screen transition-colors duration-200`}
