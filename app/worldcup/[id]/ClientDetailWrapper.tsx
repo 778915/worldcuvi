@@ -171,13 +171,14 @@ export default function ClientDetailWrapper() {
   return (
     <div className="min-h-screen bg-background pb-20">
       <div className="max-w-4xl mx-auto px-6 py-12">
-         <div className="flex items-center justify-between mb-8">
+         <header className="flex items-center justify-between mb-8">
           <Link 
             href="/worldcup" 
             className="inline-flex items-center gap-2 transition-colors group font-bold"
             style={{ color: 'var(--accent-2)' }}
+            aria-label="월드컵 목록으로 돌아가기"
           >
-            <ChevronLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" />
+            <ChevronLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" aria-hidden="true" />
             뒤로 가기
           </Link>
 
@@ -186,64 +187,67 @@ export default function ClientDetailWrapper() {
               onClick={() => setShowSettings(true)}
               className="p-3 rounded-2xl bg-zinc-100 dark:bg-zinc-900 border border-black/5 dark:border-white/10 text-zinc-500 hover:text-[var(--accent-1)] transition-all hover:scale-110 active:rotate-90"
               title="관리 설정"
+              aria-label="월드컵 관리 설정 열기"
             >
-              <Settings className="w-6 h-6" />
+              <Settings className="w-6 h-6" aria-hidden="true" />
             </button>
           )}
-        </div>
+        </header>
 
         {/* Hero Section */}
-        <PremiumHover 
-          onClick={() => router.push(`/worldcup/${id}/play`)}
-          className="detail-photo-container relative aspect-[1.91/1] rounded-3xl overflow-hidden mb-12 shadow-2xl group border border-white/10 dark:bg-black"
-        >
-        <VideoThumbnail 
-          videoId={undefined} 
-          thumbnailUrl={detail?.thumbnail_url || ''} 
-          title={detail?.title || ''} 
-        />
-          <div className="absolute inset-0 bg-gradient-to-t from-black via-black/30 to-transparent opacity-60 group-hover:opacity-80 transition-opacity" />
-          
-          {/* Play Overlay */}
-          <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-500 transform scale-90 group-hover:scale-100">
-            <div className="flex flex-col items-center gap-4">
-              <div className="w-20 h-20 rounded-full bg-white/20 backdrop-blur-xl border-2 border-white/50 flex items-center justify-center shadow-2xl shadow-black/50">
-                <Play className="w-10 h-10 text-white fill-white ml-1" />
+        <section aria-label="월드컵 대문">
+          <PremiumHover 
+            onClick={() => router.push(`/worldcup/${id}/play`)}
+            className="detail-photo-container relative aspect-[1.91/1] rounded-3xl overflow-hidden mb-12 shadow-2xl group border border-white/10 dark:bg-black"
+          >
+          <VideoThumbnail 
+            videoId={undefined} 
+            thumbnailUrl={detail?.thumbnail_url || ''} 
+            title={detail?.title || ''} 
+          />
+            <div className="absolute inset-0 bg-gradient-to-t from-black via-black/30 to-transparent opacity-60 group-hover:opacity-80 transition-opacity" aria-hidden="true" />
+            
+            {/* Play Overlay */}
+            <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-500 transform scale-90 group-hover:scale-100">
+              <div className="flex flex-col items-center gap-4">
+                <div className="w-20 h-20 rounded-full bg-white/20 backdrop-blur-xl border-2 border-white/50 flex items-center justify-center shadow-2xl shadow-black/50">
+                  <Play className="w-10 h-10 text-white fill-white ml-1" aria-hidden="true" />
+                </div>
+                <span className="text-white font-black text-2xl tracking-[0.5rem] drop-shadow-2xl">PLAY NOW</span>
               </div>
-              <span className="text-white font-black text-2xl tracking-[0.5rem] drop-shadow-2xl">PLAY NOW</span>
             </div>
-          </div>
 
-          <div className="absolute inset-0 flex flex-col justify-end p-8 pointer-events-none">
-            <div className="flex items-center gap-3 mb-4">
-              <span className="px-3 py-1 bg-white/20 backdrop-blur-md rounded-full text-white text-xs font-bold border border-white/20">
-                {detail?.category}
-              </span>
-              <span className="flex items-center gap-1.5 text-white/80 text-xs font-medium">
-                <Users className="w-4 h-4" />
-                {detail?.participant_count.toLocaleString() || '0'}명 참여 중
-              </span>
+            <div className="absolute inset-0 flex flex-col justify-end p-8 pointer-events-none">
+              <div className="flex items-center gap-3 mb-4">
+                <span className="px-3 py-1 bg-white/20 backdrop-blur-md rounded-full text-white text-xs font-bold border border-white/20">
+                  {detail?.category}
+                </span>
+                <span className="flex items-center gap-1.5 text-white/80 text-xs font-medium">
+                  <Users className="w-4 h-4" aria-hidden="true" />
+                  {detail?.participant_count.toLocaleString() || '0'}명 참여 중
+                </span>
+              </div>
+              <h1 className="text-4xl md:text-5xl font-black text-white mb-4 flex items-center gap-3">
+                <span aria-hidden="true">{detail?.emoji}</span> {detail?.title}
+              </h1>
+              <p className="text-zinc-200 text-lg font-medium max-w-2xl">{detail?.description}</p>
             </div>
-            <h1 className="text-4xl md:text-5xl font-black text-white mb-4 flex items-center gap-3">
-              {detail?.emoji} {detail?.title}
-            </h1>
-            <p className="text-zinc-200 text-lg font-medium max-w-2xl">{detail?.description}</p>
-          </div>
-        </PremiumHover>
+          </PremiumHover>
+        </section>
 
         {/* Action Bar */}
-        <div className="flex flex-col md:flex-row items-center justify-between gap-6 mb-12">
+        <section className="flex flex-col md:flex-row items-center justify-between gap-6 mb-12" aria-label="기록 및 액션">
           <div className="flex items-center gap-8">
             <div className="text-center">
               <p className="text-xs font-bold uppercase tracking-wider mb-1" style={{ color: 'var(--accent-2)' }}>PLAYS</p>
               <p className="text-2xl font-black text-foreground">{detail!.total_plays.toLocaleString()}</p>
             </div>
-            <div className="w-px h-8 bg-black/10 dark:bg-white/10" />
+            <div className="w-px h-8 bg-black/10 dark:bg-white/10" aria-hidden="true" />
             <div className="text-center">
               <p className="text-xs font-bold uppercase tracking-wider mb-1" style={{ color: 'var(--accent-2)' }}>VIEWS</p>
               <p className="text-2xl font-black text-foreground">{detail!.total_views.toLocaleString()}</p>
             </div>
-            <div className="w-px h-8 bg-black/10 dark:bg-white/10" />
+            <div className="w-px h-8 bg-black/10 dark:bg-white/10" aria-hidden="true" />
             <div className="text-center">
               <p className="text-xs font-black uppercase tracking-[0.2em] mb-3" style={{ color: 'var(--accent-2)' }}>CREATOR</p>
               <div className="flex items-center gap-4 group/creator">
@@ -262,6 +266,7 @@ export default function ClientDetailWrapper() {
                     <div 
                       className="absolute -inset-1 rounded-full border border-white/20 opacity-50 animate-[spin_8s_linear_infinite]"
                       style={{ borderColor: (detail!.creatorGrade?.toLowerCase() === 'gold' ? 'rgba(255,215,0,0.4)' : detail!.creatorGrade?.toLowerCase() === 'silver' ? 'rgba(192,192,192,0.4)' : detail!.creatorGrade?.toLowerCase() === 'bronze' ? 'rgba(205,127,50,0.4)' : 'rgba(255,255,255,0.2)') }}
+                      aria-hidden="true"
                     />
                   </div>
                 )}
@@ -288,8 +293,9 @@ export default function ClientDetailWrapper() {
             >
               <button 
                 className="w-full h-full flex items-center justify-center gap-3 px-8 py-4 bg-[var(--accent-1)] text-white rounded-2xl font-black text-xl shadow-lg shadow-[var(--accent-1)]/20 active:scale-95 transition-all"
+                aria-label="월드컵 플레이 시작하기"
               >
-                <Play className="w-6 h-6 fill-current" />
+                <Play className="w-6 h-6 fill-current" aria-hidden="true" />
                 시작하기
               </button>
             </PremiumHover>
@@ -297,8 +303,10 @@ export default function ClientDetailWrapper() {
               <PremiumHover className="rounded-2xl" onClick={() => setShowShareMenu(!showShareMenu)}>
                 <button 
                   className="w-14 h-14 flex items-center justify-center rounded-2xl bg-white dark:bg-zinc-900 border border-black/5 dark:border-white/10 text-[var(--accent-1)] hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-all shadow-xl"
+                  aria-label="공유 옵션 열기"
+                  aria-expanded={showShareMenu}
                 >
-                  <Share2 className="w-6 h-6" />
+                  <Share2 className="w-6 h-6" aria-hidden="true" />
                 </button>
               </PremiumHover>
               
@@ -328,10 +336,12 @@ export default function ClientDetailWrapper() {
               </AnimatePresence>
             </div>
           </div>
-        </div>
+        </section>
   
-        <FeedbackSection worldcupId={detail!.id} />
-        <CommentSection worldcupId={detail!.id} />
+        <section aria-label="피드백 및 댓글">
+          <FeedbackSection worldcupId={detail!.id} />
+          <CommentSection worldcupId={detail!.id} />
+        </section>
       </div>
 
       {showSettings && (

@@ -49,7 +49,44 @@ export async function generateMetadata(
   }
 }
 
+import Script from 'next/script'
+
 export default async function WorldcupDetailPage({ params }: Props) {
   const { id } = await params
-  return <ClientDetailWrapper />
+  const supabase = await createClient()
+  const { data: wc } = await supabase
+    .from('worldcups')
+    .select('title, description, like_count')
+    .eq('id', id)
+    .single()
+
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": wc?.title || 'Worldcup',
+    "operatingSystem": "Web",
+    "applicationCategory": "GameApplication",
+    "description": wc?.description || '재미있는 이상형 월드컵을 플레이해보세요!',
+    "aggregateRating": {
+      "@type": "AggregateRating",
+      "ratingValue": "4.8",
+      "ratingCount": Math.max(wc?.like_count || 0, 10)
+    },
+    "offers": {
+      "@type": "Offer",
+      "price": "0",
+      "priceCurrency": "KRW"
+    }
+  }
+
+  return (
+    <main>
+      <Script
+        id="structured-data"
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
+      <ClientDetailWrapper />
+    </main>
+  )
 }

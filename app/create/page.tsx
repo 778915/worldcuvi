@@ -32,6 +32,7 @@ import { useAccent } from '@/components/ThemeProvider'
 import PremiumUserBadge from '@/components/PremiumUserBadge'
 import PlusNudgeModal from '@/components/PlusNudgeModal'
 import { createClient } from '@/lib/supabase/client'
+import SEOImage from '@/components/common/SEOImage'
 
 interface AIResult {
   determined_genre: string
@@ -826,10 +827,10 @@ export default function WorldcupCreatePage() {
         )}
       </AnimatePresence>
 
-      <div className="min-h-screen pb-24 transition-colors duration-500" style={{ backgroundColor: 'var(--accent-3)', color: 'var(--accent-2)' }}>
+      <main className="min-h-screen pb-24 transition-colors duration-500" style={{ backgroundColor: 'var(--accent-3)', color: 'var(--accent-2)' }} aria-label="월드컵 제작">
         <div className="max-w-6xl mx-auto px-6 pt-12">
           {/* Header */}
-          <div className="flex items-center justify-between mb-12">
+          <header className="flex items-center justify-between mb-12">
             <div className="flex-1">
               <h1 className="text-3xl font-black flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ backgroundColor: 'var(--accent-1)', color: 'var(--accent-3)' }}>
@@ -886,15 +887,16 @@ export default function WorldcupCreatePage() {
                 </button>
               )}
             </div>
-          </div>
+          </header>
 
           {/* STEP 1: Input */}
           {step === 1 && (
-            <motion.div
+            <motion.section
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               className="max-w-2xl mx-auto backdrop-blur-xl rounded-[2.5rem] p-10 shadow-xl"
               style={{ backgroundColor: 'var(--accent-3)', border: '1px solid var(--accent-1)', opacity: 0.9 }}
+              aria-label="1단계: 기본 정보 입력"
             >
               <form onSubmit={handleStartAnalysis} className="space-y-8">
                 <div className="space-y-3">
@@ -1034,13 +1036,13 @@ export default function WorldcupCreatePage() {
                   )}
                 </motion.button>
               </form>
-            </motion.div>
+            </motion.section>
           )}
 
 
           {/* STEP 2: Analyzing (Skeleton) */}
           {step === 2 && (
-            <div className="max-w-4xl mx-auto text-center py-20">
+            <section className="max-w-4xl mx-auto text-center py-20" aria-label="2단계: AI 분석 중">
               <div className="relative w-24 h-24 mx-auto mb-10">
                 <div className="absolute inset-0 rounded-full border-4 opacity-20" style={{ borderColor: 'var(--accent-1)' }} />
                 <div className="absolute inset-0 rounded-full border-4 border-t-transparent animate-spin" style={{ borderColor: 'var(--accent-1)' }} />
@@ -1061,12 +1063,12 @@ export default function WorldcupCreatePage() {
                   {BRIEFING_MESSAGES[briefingIndex]}
                 </motion.p>
               </div>
-            </div>
+            </section>
           )}
 
           {/* STEP 3: Result / Edit */}
           {step === 3 && aiResult && (
-            <div className="space-y-12">
+            <section className="space-y-12" aria-label="3단계: 후보 및 설정 편집">
               {/* Gamification Success Msg */}
               <AnimatePresence>
                 {gamificationMsg && (
@@ -1312,7 +1314,13 @@ export default function WorldcupCreatePage() {
                           : "border-zinc-100 dark:border-zinc-800 hover:border-violet-300"
                           }`}
                       >
-                        <img src={item.thumbnail} className="w-full h-full object-cover" alt="thumbnail option" />
+                        <SEOImage
+                          src={item.thumbnail}
+                          className="w-full h-full object-cover"
+                          alt="thumbnail option"
+                          worldcupTitle={title}
+                          candidateName={item.title}
+                        />
                         {worldcupData.thumbnail_url === item.thumbnail && (
                           <div className="absolute inset-0 bg-[var(--accent-1)]/20 flex items-center justify-center">
                             <CheckCircle2 className="w-6 h-6 text-white" />
@@ -1334,7 +1342,13 @@ export default function WorldcupCreatePage() {
                       />
                       {worldcupData.thumbnail_url && (
                         <div className="w-12 h-12 rounded-lg overflow-hidden border border-violet-500/50 flex-shrink-0">
-                          <img src={worldcupData.thumbnail_url} className="w-full h-full object-cover" alt="preview" onError={(e) => e.currentTarget.src = 'https://via.placeholder.com/150'} />
+                          <SEOImage
+                            src={worldcupData.thumbnail_url}
+                            className="w-full h-full object-cover"
+                            alt="preview"
+                            worldcupTitle={title}
+                            candidateName="미리보기"
+                          />
                         </div>
                       )}
                     </div>
@@ -1429,7 +1443,7 @@ export default function WorldcupCreatePage() {
                   월드컵 생성하기
                 </button>
               </div>
-            </div>
+            </section>
           )}
         </div>
 
@@ -1613,9 +1627,10 @@ export default function WorldcupCreatePage() {
                           </div>
 
                           <div className="relative aspect-video rounded-[1.5rem] overflow-hidden bg-zinc-100 dark:bg-zinc-800 border border-black/5 dark:border-white/5 mb-3 group-hover:shadow-xl transition-all">
-                            <img
+                            <SEOImage
                               src={video.thumbnail}
-                              alt={video.title}
+                              candidateName={video.title}
+                              fill
                               className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
                               onError={(e) => {
                                 const fallbackSrc = `https://i.ytimg.com/vi/${video.videoId}/hqdefault.jpg`;
@@ -1711,10 +1726,11 @@ export default function WorldcupCreatePage() {
                                 : 'border-transparent hover:border-[var(--accent-1)]/30'
                                 }`}
                             >
-                              <img
+                              <SEOImage
                                 src={v.thumbnail}
-                                className="w-full aspect-video object-cover"
-                                alt="thumb"
+                                candidateName={v.title}
+                                fill
+                                className="w-full h-full object-cover"
                                 onError={(e) => {
                                   const fallbackSrc = `https://i.ytimg.com/vi/${v.videoId}/hqdefault.jpg`;
                                   if (e.currentTarget.src !== fallbackSrc) {
@@ -1867,10 +1883,11 @@ export default function WorldcupCreatePage() {
                         }`}
                     >
                       <div className="aspect-video relative overflow-hidden bg-zinc-200 dark:bg-zinc-800">
-                        <img
+                        <SEOImage
                           src={v.thumbnail}
+                          candidateName={v.title}
+                          fill
                           className="w-full h-full object-cover"
-                          alt="thumb"
                           onError={(e) => {
                             const fallbackSrc = `https://i.ytimg.com/vi/${v.videoId}/hqdefault.jpg`;
                             if (e.currentTarget.src !== fallbackSrc) {
@@ -1988,7 +2005,7 @@ export default function WorldcupCreatePage() {
         </AnimatePresence>
 
         <PlusNudgeModal isOpen={showNudge} onClose={() => setShowNudge(false)} reason={nudgeReason} />
-      </div>
+      </main>
     </>
   )
 }
@@ -2137,17 +2154,20 @@ function ItemCard({ item, onDelete, onMove, onOpenMenu }: {
       className={`group relative aspect-video rounded-[1.5rem] overflow-hidden border transition-all duration-300 shadow-lg cursor-pointer hover:z-50 z-20`}
       style={{ backgroundColor: 'var(--accent-3)', borderColor: `${accentPrimary}4d` }}
     >
-      <img
-        src={item.thumbnail}
-        alt={item.title}
-        className="absolute inset-0 w-full h-full object-cover transition-transform duration-500"
-        onError={(e) => {
-          const fallbackSrc = `https://i.ytimg.com/vi/${item.videoId}/hqdefault.jpg`;
-          if (e.currentTarget.src !== fallbackSrc) {
-            e.currentTarget.src = fallbackSrc;
-          }
-        }}
-      />
+      <div className="absolute inset-0">
+        <SEOImage
+          src={item.thumbnail}
+          candidateName={item.title}
+          fill
+          className="w-full h-full object-cover transition-transform duration-500"
+          onError={(e) => {
+            const fallbackSrc = `https://i.ytimg.com/vi/${item.videoId}/hqdefault.jpg`;
+            if (e.currentTarget.src !== fallbackSrc) {
+              e.currentTarget.src = fallbackSrc;
+            }
+          }}
+        />
+      </div>
       <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent opacity-60 transition-opacity group-hover:opacity-80" />
       <div className="absolute inset-x-0 bottom-0 p-4 transform translate-y-1 transition-transform group-hover:translate-y-0 text-center">
         <p className="text-[10px] font-black uppercase tracking-widest mb-1 opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: 'var(--accent-1)' }}>CANDIDATE</p>

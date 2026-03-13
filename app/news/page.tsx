@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import Link from 'next/link'
-import { Plus } from 'lucide-react' // 플러스 아이콘 사용
+import { Plus } from 'lucide-react'
+import SEOImage from '@/components/common/SEOImage'
 
 interface Worldcup {
     id: string;
@@ -46,15 +47,15 @@ export default function NewsPage() {
     }, [])
 
     return (
-        <div className="max-w-[1400px] mx-auto px-4 py-8">
-            <div className="mb-10">
+        <main className="max-w-[1400px] mx-auto px-4 py-8">
+            <header className="mb-10">
                 <h1 className="text-3xl font-bold mb-2">✨ 신규 월드컵</h1>
                 <p style={{ color: 'var(--accent-2)' }}>
                     최근 30일 이내에 등록된 매치들입니다.
                 </p>
-            </div>
+            </header>
 
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6">
+            <section className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6">
                 <CreateWorldCupCard />
 
                 {loading ? (
@@ -66,8 +67,8 @@ export default function NewsPage() {
                         <WorldCupCard key={wc.id} wc={wc} />
                     ))
                 )}
-            </div>
-        </div>
+            </section>
+        </main>
     )
 }
 
@@ -93,12 +94,13 @@ function WorldCupCard({ wc }: { wc: any }) {
     const dDay = Math.max(0, 30 - diffDays)
 
     return (
-      <div className="premium-hover group relative bg-white dark:bg-zinc-950 border border-black/5 dark:border-white/10 rounded-[2rem] overflow-hidden shadow-sm flex flex-col transition-all duration-500">
-        <div className="relative">
-            <img 
+      <article className="premium-hover group relative bg-white dark:bg-zinc-950 border border-black/5 dark:border-white/10 rounded-[2rem] overflow-hidden shadow-sm flex flex-col transition-all duration-500">
+        <div className="relative aspect-video">
+            <SEOImage 
                 src={wc.thumbnail_url || '/default-thumb.png'} 
-                alt={wc.title}
-                className="w-full aspect-video object-cover"
+                worldcupTitle={wc.title}
+                fill
+                className="w-full h-full object-cover"
             />
             <div className="absolute top-3 left-3 bg-black/70 backdrop-blur-md text-white text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest z-10 border border-white/10">
                 {dDay === 0 ? 'D-DAY' : `D-${dDay}`}
@@ -115,7 +117,7 @@ function WorldCupCard({ wc }: { wc: any }) {
               {wc.total_plays?.toLocaleString() || 0}
             </div>
           </div>
-          <h3 className="font-black text-xs md:text-sm line-clamp-2 text-zinc-800 dark:text-zinc-100 italic transition-colors group-hover:text-[var(--accent-1)]">{wc.title}</h3>
+          <h2 className="font-black text-xs md:text-sm line-clamp-2 text-zinc-800 dark:text-zinc-100 italic transition-colors group-hover:text-[var(--accent-1)]">{wc.title}</h2>
           <div className="mt-3 flex items-center justify-between">
               <span className="text-[9px] text-zinc-400 font-bold italic">@{wc.creator?.nickname || 'Anonymous'}</span>
               <div className="text-[8px] font-black text-zinc-500 uppercase">
@@ -123,6 +125,6 @@ function WorldCupCard({ wc }: { wc: any }) {
               </div>
           </div>
         </Link>
-      </div>
+      </article>
     )
 }

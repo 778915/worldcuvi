@@ -21,6 +21,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/components/AuthProvider'
 import { useAccent } from '@/components/ThemeProvider'
 import CreatorBadge from '@/components/CreatorBadge'
+import SEOImage from '@/components/common/SEOImage'
 
 export default function CreatorDashboard() {
   const router = useRouter()
@@ -67,7 +68,7 @@ export default function CreatorDashboard() {
 
   if (!profile?.is_creator) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center">
+      <main className="min-h-screen flex flex-col items-center justify-center p-6 text-center">
         <div className="w-20 h-20 rounded-3xl bg-violet-600/10 flex items-center justify-center text-violet-600 mb-6">
           <Trophy className="w-10 h-10" />
         </div>
@@ -79,7 +80,7 @@ export default function CreatorDashboard() {
         >
           첫 월드컵 만들기
         </Link>
-      </div>
+      </main>
     )
   }
 
@@ -87,16 +88,17 @@ export default function CreatorDashboard() {
   const totalLikes = worldcups.reduce((acc, curr) => acc + (curr.like_count || 0), 0)
 
   return (
-    <div className="min-h-screen bg-zinc-50 dark:bg-black text-foreground pb-24">
+    <main className="min-h-screen bg-zinc-50 dark:bg-black text-foreground pb-24">
       <div className="max-w-6xl mx-auto px-6 pt-12">
         {/* Header */}
-        <div className="flex items-center justify-between mb-12">
+        <header className="flex items-center justify-between mb-12">
           <div className="flex items-center gap-6">
             <button 
               onClick={() => router.back()}
               className="w-12 h-12 rounded-2xl bg-white dark:bg-zinc-900 border border-black/5 dark:border-white/10 flex items-center justify-center text-zinc-400 hover:text-foreground transition-all"
+              aria-label="이전 페이지로 돌아가기"
             >
-              <ChevronLeft className="w-6 h-6" />
+              <ChevronLeft className="w-6 h-6" aria-hidden="true" />
             </button>
             <div>
               <div className="flex items-center gap-3 mb-1">
@@ -113,10 +115,10 @@ export default function CreatorDashboard() {
             <Plus className="w-4 h-4" />
             새 월드컵 제작
           </Link>
-        </div>
+        </header>
 
         {/* Stats Grid */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
+        <section className="grid grid-cols-2 lg:grid-cols-4 gap-6 mb-12" aria-label="통계 요약">
           {[
             { label: 'Total Plays', value: totalPlays.toLocaleString(), icon: Play, color: 'text-violet-600' },
             { label: 'Total Likes', value: totalLikes.toLocaleString(), icon: Heart, color: 'text-red-500' },
@@ -140,10 +142,10 @@ export default function CreatorDashboard() {
               <p className="text-2xl font-black">{stat.value}</p>
             </motion.div>
           ))}
-        </div>
+        </section>
 
         {/* My Content List */}
-        <div className="space-y-6">
+        <section className="space-y-6" aria-label="내 월드컵 목록">
           <div className="flex items-center justify-between px-2">
             <h2 className="text-xl font-black flex items-center gap-2">
               <BarChart3 className="w-5 h-5 text-violet-600" />
@@ -161,50 +163,61 @@ export default function CreatorDashboard() {
                 initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: 0.2 + (i * 0.05) }}
-                className="group bg-white dark:bg-zinc-900 p-4 rounded-3xl border border-black/5 dark:border-white/5 flex items-center gap-6 hover:border-violet-600/30 transition-all shadow-sm card-hover"
               >
-                <div className="w-32 aspect-video rounded-2xl overflow-hidden bg-zinc-100 shrink-0">
-                  <img src={wc.thumbnail_url} alt={wc.title} className="w-full h-full object-cover transition-transform group-hover:scale-110" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <h3 className="text-lg font-black truncate group-hover:text-violet-600 transition-colors mb-1">{wc.title}</h3>
-                  <div className="flex items-center gap-4 text-xs font-bold text-zinc-400">
-                    <span className="flex items-center gap-1"><Play className="w-3 h-3" /> {wc.play_count || 0}</span>
-                    <span className="flex items-center gap-1"><Heart className="w-3 h-3" /> {wc.like_count || 0}</span>
-                    <span className="flex items-center gap-1"><Users className="w-3 h-3" /> {wc.participant_count || 0}</span>
-                    <span className="ml-2 px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-black/40">{new Date(wc.created_at).toLocaleDateString()}</span>
+                <article className="group bg-white dark:bg-zinc-900 p-4 rounded-3xl border border-black/5 dark:border-white/5 flex items-center gap-6 hover:border-violet-600/30 transition-all shadow-sm card-hover">
+                  <div className="relative w-32 aspect-video rounded-2xl overflow-hidden bg-zinc-100 shrink-0">
+                    <SEOImage 
+                      src={wc.thumbnail_url} 
+                      worldcupTitle={wc.title}
+                      fill
+                      className="w-full h-full object-cover transition-transform group-hover:scale-110" 
+                    />
                   </div>
-                </div>
-                <div className="flex items-center gap-2 px-2">
-                  <Link 
-                    href={`/worldcup/${wc.id}`}
-                    className="w-10 h-10 rounded-xl bg-zinc-100 dark:bg-black/50 flex items-center justify-center text-zinc-400 hover:text-foreground transition-all"
-                  >
-                    <ExternalLink className="w-5 h-5" />
-                  </Link>
-                  <button className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-zinc-900 dark:bg-white text-white dark:text-black font-black text-sm btn-hover transition-all shadow-lg shadow-zinc-500/10">
-                    <Settings className="w-4 h-4" />
-                    수정
-                  </button>
-                  <button 
-                    onClick={async () => {
-                      if (!confirm("정말 삭제하시겠습니까? 관련 데이터가 모두 삭제됩니다.")) return;
-                      const { error } = await supabase
-                        .from('worldcups')
-                        .delete()
-                        .eq('id', wc.id);
-                      
-                      if (!error) {
-                        setWorldcups(worldcups.filter(w => w.id !== wc.id));
-                      } else {
-                        alert("삭제 중 오류가 발생했습니다.");
-                      }
-                    }}
-                    className="w-10 h-10 rounded-xl bg-red-500/10 text-red-500 flex items-center justify-center hover:bg-red-500 hover:text-white transition-all border border-red-500/20"
-                  >
-                    <Trash2 className="w-5 h-5" />
-                  </button>
-                </div>
+                  <div className="flex-1 min-w-0">
+                    <h3 className="text-lg font-black truncate group-hover:text-violet-600 transition-colors mb-1">{wc.title}</h3>
+                    <div className="flex items-center gap-4 text-xs font-bold text-zinc-400">
+                      <span className="flex items-center gap-1"><Play className="w-3 h-3" /> {wc.play_count || 0}</span>
+                      <span className="flex items-center gap-1"><Heart className="w-3 h-3" /> {wc.like_count || 0}</span>
+                      <span className="flex items-center gap-1"><Users className="w-3 h-3" /> {wc.participant_count || 0}</span>
+                      <span className="ml-2 px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-black/40">{new Date(wc.created_at).toLocaleDateString()}</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 px-2">
+                    <Link 
+                      href={`/worldcup/${wc.id}`}
+                      className="w-10 h-10 rounded-xl bg-zinc-100 dark:bg-black/50 flex items-center justify-center text-zinc-400 hover:text-foreground transition-all"
+                      aria-label="월드컵 링크로 이동"
+                    >
+                      <ExternalLink className="w-5 h-5" />
+                    </Link>
+                    <button 
+                      className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-zinc-900 dark:bg-white text-white dark:text-black font-black text-sm btn-hover transition-all shadow-lg shadow-zinc-500/10"
+                      aria-label="월드컵 수정"
+                    >
+                      <Settings className="w-4 h-4" />
+                      수정
+                    </button>
+                    <button 
+                      onClick={async () => {
+                        if (!confirm("정말 삭제하시겠습니까? 관련 데이터가 모두 삭제됩니다.")) return;
+                        const { error } = await supabase
+                          .from('worldcups')
+                          .delete()
+                          .eq('id', wc.id);
+                        
+                        if (!error) {
+                          setWorldcups(worldcups.filter(w => w.id !== wc.id));
+                        } else {
+                          alert("삭제 중 오류가 발생했습니다.");
+                        }
+                      }}
+                      className="w-10 h-10 rounded-xl bg-red-500/10 text-red-500 flex items-center justify-center hover:bg-red-500 hover:text-white transition-all border border-red-500/20"
+                      aria-label="월드컵 삭제"
+                    >
+                      <Trash2 className="w-5 h-5" />
+                    </button>
+                  </div>
+                </article>
               </motion.div>
             )) : (
               <div className="py-24 text-center bg-white dark:bg-zinc-900 rounded-[3rem] border border-dashed border-zinc-200 dark:border-zinc-800">
@@ -214,8 +227,8 @@ export default function CreatorDashboard() {
               </div>
             )}
           </div>
-        </div>
+        </section>
       </div>
-    </div>
+    </main>
   )
 }

@@ -108,7 +108,7 @@ export default function WorldcupPlayPage() {
   )
 
   if (winner) return (
-    <div className="min-h-screen bg-black flex flex-col items-center justify-center p-6 text-center animate-in fade-in duration-1000">
+    <main className="min-h-screen bg-black flex flex-col items-center justify-center p-6 text-center animate-in fade-in duration-1000" aria-label="월드컵 우승 결과">
       <motion.div
         initial={{ scale: 0, rotate: -20 }}
         animate={{ scale: 1.1, rotate: 0 }}
@@ -173,7 +173,7 @@ export default function WorldcupPlayPage() {
           <Script src="https://pl28905487.effectivegatecpm.com/da/2c/c8/da2cc85d141f9144e72f86860df06c50.js" />
         </div>
       )}
-    </div>
+    </main>
   )
 
   if (!currentMatch) return (
@@ -183,9 +183,9 @@ export default function WorldcupPlayPage() {
   )
 
   return (
-    <div className="min-h-screen bg-black flex flex-col overflow-hidden select-none">
+    <main className="min-h-screen bg-black flex flex-col overflow-hidden select-none" aria-label="월드컵 진행 중">
       {/* Header */}
-      <div className="absolute top-0 inset-x-0 p-8 pt-24 md:pt-32 flex items-center justify-between z-50 pointer-events-none">
+      <header className="absolute top-0 inset-x-0 p-8 pt-24 md:pt-32 flex items-center justify-between z-50 pointer-events-none">
         <motion.button 
           initial={{ x: -20, opacity: 0 }}
           animate={{ x: 0, opacity: 1 }}
@@ -215,10 +215,10 @@ export default function WorldcupPlayPage() {
           </motion.div>
         </div>
         <div className="h-14 w-32" />
-      </div>
+      </header>
 
       {/* Main Game Grid */}
-      <div className="flex-1 grid grid-cols-1 md:grid-cols-2">
+      <section className="flex-1 grid grid-cols-1 md:grid-cols-2" aria-label="1:1 대결">
         <AnimatePresence mode="wait">
           {currentMatch.map((match, idx) => (
             <motion.div 
@@ -290,10 +290,10 @@ export default function WorldcupPlayPage() {
             </motion.div>
           ))}
         </AnimatePresence>
-      </div>
+      </section>
 
       {/* Footer Info */}
-      <div className="p-8 h-24 flex items-center justify-center bg-zinc-950/90 backdrop-blur-2xl border-t border-white/5">
+      <footer className="p-8 h-24 flex items-center justify-center bg-zinc-950/90 backdrop-blur-2xl border-t border-white/5">
         <div className="flex items-center gap-12 text-[10px] font-black text-zinc-500 uppercase tracking-widest">
           <div className="flex items-center gap-3">
             <motion.span 
@@ -338,7 +338,7 @@ export default function WorldcupPlayPage() {
              SUPER DYNAMIC MODE
           </div>
         </div>
-      </div>
-    </div>
+      </footer>
+    </main>
   )
 }

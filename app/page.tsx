@@ -10,6 +10,7 @@ import BoosterButton from '@/components/BoosterButton'
 import { createClient } from '@/lib/supabase/client'
 import VideoThumbnail from '@/components/VideoThumbnail'
 import PremiumHover from '@/components/PremiumHover'
+import SEOImage from '@/components/common/SEOImage'
 
 const FALLBACK_BANNERS = [
   { id: 'f1', type: 'Welcome', title: '월드컵의 세계로\n여러분을 초대합니다!', desc: '당신의 최애를 직접 투표하고 참여해보세요.', bg: 'from-violet-600 to-indigo-600', href: '#' },
@@ -166,7 +167,8 @@ export default function HomePage() {
   }, [banners])
 
   return (
-    <div className="min-h-[calc(100vh-4rem)] bg-background">
+    <main className="min-h-[calc(100vh-4rem)] bg-background">
+      <h1 className="sr-only">월드커비 - 유튜브 영상 이상형 월드컵 플랫폼</h1>
       
       {/* ── 섹션 1: 히어로 배너 ── */}
       <section ref={bannerRef} className="max-w-7xl mx-auto px-6 pt-24 pb-12">
@@ -383,7 +385,7 @@ export default function HomePage() {
           </AnimatePresence>
         </div>
       </section>
-    </div>
+    </main>
   )
 }
 
@@ -403,7 +405,13 @@ function PodiumItem({ wc, rank, hovered, onHover }: { wc: any, rank: number, hov
       {styles.bounce && <div className="absolute -top-8 w-12 h-12 text-yellow-400 animate-bounce z-20"><Crown className="w-full h-full fill-yellow-400" /></div>}
       <div className={`relative w-24 h-24 md:w-28 md:h-28 rounded-full border-4 border-white/20 z-10 -mb-8 md:-mb-10 bg-zinc-800 ${styles.glow} overflow-hidden shadow-[0_0_50px_rgba(0,0,0,0.5)]`}>
         {wc.creator_avatar_url ? (
-          <img src={wc.creator_avatar_url} alt={wc.creator?.nickname} className="w-full h-full object-cover rounded-full" />
+          <SEOImage 
+            src={wc.creator_avatar_url} 
+            alt={wc.creator?.nickname} 
+            worldcupTitle={wc.title}
+            fill
+            className="w-full h-full object-cover rounded-full" 
+          />
         ) : (
           <div className="w-full h-full flex items-center justify-center bg-zinc-800 text-3xl">👤</div>
         )}
@@ -444,38 +452,40 @@ function CreateWorldCupCard() {
 function WorldCupCard({ wc }: { wc: any }) {
   const router = useRouter()
   return (
-    <PremiumHover onClick={() => router.push(`/worldcup/${wc.id}`)} className="rounded-[2rem] overflow-hidden">
-      <div className="relative h-full bg-white dark:bg-zinc-900 border border-black/5 dark:border-white/10 flex flex-col transition-all duration-500">
-        <VideoThumbnail 
-          videoId={wc.thumbnail_youtube_id} 
-          thumbnailUrl={wc.thumbnail_url} 
-          title={wc.title} 
-          onPlayClick={(e) => {
-            e.preventDefault()
-            e.stopPropagation()
-            router.push(`/worldcup/${wc.id}/play`)
-          }}
-        />
-        <div className="p-4 flex-1 flex flex-col bg-white dark:bg-zinc-900">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-tighter border" style={{ backgroundColor: 'color-mix(in srgb, var(--accent-1) 10%, transparent)', color: 'var(--accent-1)', borderColor: 'color-mix(in srgb, var(--accent-1) 10%, transparent)' }}>
-              {wc.category || 'GENERAL'}
-            </span>
-            <div className="flex items-center gap-1 text-[9px] text-zinc-400 font-bold uppercase tracking-widest">
-              <Clock className="w-3 h-3" />
-              {wc.total_plays.toLocaleString()}
+    <article>
+      <PremiumHover onClick={() => router.push(`/worldcup/${wc.id}`)} className="rounded-[2rem] overflow-hidden h-full">
+        <div className="relative h-full bg-white dark:bg-zinc-900 border border-black/5 dark:border-white/10 flex flex-col transition-all duration-500">
+          <VideoThumbnail 
+            videoId={wc.thumbnail_youtube_id} 
+            thumbnailUrl={wc.thumbnail_url} 
+            title={wc.title} 
+            onPlayClick={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              router.push(`/worldcup/${wc.id}/play`)
+            }}
+          />
+          <div className="p-4 flex-1 flex flex-col bg-white dark:bg-zinc-900">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-tighter border" style={{ backgroundColor: 'color-mix(in srgb, var(--accent-1) 10%, transparent)', color: 'var(--accent-1)', borderColor: 'color-mix(in srgb, var(--accent-1) 10%, transparent)' }}>
+                {wc.category || 'GENERAL'}
+              </span>
+              <div className="flex items-center gap-1 text-[9px] text-zinc-400 font-bold uppercase tracking-widest">
+                <Clock className="w-3 h-3" />
+                {wc.total_plays.toLocaleString()}
+              </div>
+            </div>
+            <h3 className="font-black text-xs md:text-sm line-clamp-2 text-zinc-800 dark:text-zinc-100 italic transition-colors group-hover:text-[var(--accent-1)]">{wc.title}</h3>
+            <div className="mt-3 flex items-center justify-between">
+                <span className="text-[9px] text-zinc-400 font-bold italic">@{wc.creator?.nickname || 'Anonymous'}</span>
+                <div className="flex items-center gap-1">
+                    <div className="w-1 h-1 rounded-full bg-red-600 animate-pulse" />
+                    <span className="text-[8px] font-black text-zinc-500 uppercase">LIVE</span>
+                </div>
             </div>
           </div>
-          <h3 className="font-black text-xs md:text-sm line-clamp-2 text-zinc-800 dark:text-zinc-100 italic transition-colors group-hover:text-[var(--accent-1)]">{wc.title}</h3>
-          <div className="mt-3 flex items-center justify-between">
-              <span className="text-[9px] text-zinc-400 font-bold italic">@{wc.creator?.nickname || 'Anonymous'}</span>
-              <div className="flex items-center gap-1">
-                  <div className="w-1 h-1 rounded-full bg-red-600 animate-pulse" />
-                  <span className="text-[8px] font-black text-zinc-500 uppercase">LIVE</span>
-              </div>
-          </div>
         </div>
-      </div>
-    </PremiumHover>
+      </PremiumHover>
+    </article>
   )
 }

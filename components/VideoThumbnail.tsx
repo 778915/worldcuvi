@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react'
 import { Play } from 'lucide-react'
+import SEOImage from '@/components/common/SEOImage'
 
 interface VideoThumbnailProps {
   videoId?: string
@@ -54,9 +55,10 @@ export default function VideoThumbnail({
       }}
     >
       {thumbnailUrl ? (
-        <img 
+        <SEOImage 
           src={thumbnailUrl} 
-          alt={title} 
+          worldcupTitle={title}
+          fill
           className="absolute inset-0 w-full h-full object-cover group-hover/vid:scale-110 transition-transform duration-700" 
         />
       ) : (
