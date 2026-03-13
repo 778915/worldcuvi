@@ -4,21 +4,24 @@ import { createClient } from '@/lib/supabase/server'
 import ClientDetailWrapper from './ClientDetailWrapper'
 
 type Props = {
-  params: { id: string }
+  params: Promise<{ id: string }>
 }
 
 export async function generateMetadata(
   { params }: Props,
   parent: ResolvingMetadata
 ): Promise<Metadata> {
+  const { id } = await params
   const supabase = await createClient()
   const { data: wc } = await supabase
     .from('worldcups')
     .select('title, description, thumbnail_url')
-    .eq('id', params.id)
+    .eq('id', id)
     .single()
 
   if (!wc) return { title: 'WorldCuvi' }
+
+  const baseUrl = 'https://worldcuvi.world'
 
   return {
     title: `${wc.title} | WorldCuvi`,
@@ -34,7 +37,7 @@ export async function generateMetadata(
           alt: wc.title,
         },
       ],
-      url: `https://worldcuvi.com/worldcup/${params.id}`,
+      url: `${baseUrl}/worldcup/${id}`,
       type: 'website',
     },
     twitter: {
