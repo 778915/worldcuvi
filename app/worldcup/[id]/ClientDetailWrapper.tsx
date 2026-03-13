@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ChevronLeft, Play, Share2, Info, Trophy, Users, Settings, X as XIcon, Facebook, Link2, Check, ExternalLink } from 'lucide-react'
+import { ChevronLeft, Share2, Trophy, User, Calendar, Tag, Info, Settings, Play, Users, X as XIcon, Facebook, Link2, Check, ExternalLink } from 'lucide-react'
 import FeedbackSection from '@/components/FeedbackSection'
 import PremiumUserBadge from '@/components/PremiumUserBadge'
 import CommentSection from '@/components/CommentSection'
@@ -13,6 +13,7 @@ import { useAccent } from '@/components/ThemeProvider'
 import { useAuth } from '@/components/AuthProvider'
 import { motion, AnimatePresence } from 'framer-motion'
 import PremiumHover from '@/components/PremiumHover'
+import WorldcupSettingsModal from '@/components/WorldcupSettingsModal'
 
 export default function ClientDetailWrapper() {
   const params = useParams()
@@ -26,6 +27,9 @@ export default function ClientDetailWrapper() {
   const [loading, setLoading] = useState(true)
   const [showShareMenu, setShowShareMenu] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
+
+  const isCreator = user?.id === detail?.creatorId
 
   useEffect(() => {
     const fetchData = async () => {
@@ -122,14 +126,26 @@ export default function ClientDetailWrapper() {
   return (
     <div className="min-h-screen bg-background pb-20">
       <div className="max-w-4xl mx-auto px-6 py-12">
-        {/* Back Button */}
-        <Link 
-          href="/worldcup" 
-          className="inline-flex items-center gap-2 text-zinc-500 hover:text-white transition-colors mb-8 group"
-        >
-          <ChevronLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" />
-          뒤로 가기
-        </Link>
+         <div className="flex items-center justify-between mb-8">
+          <Link 
+            href="/worldcup" 
+            className="inline-flex items-center gap-2 transition-colors group font-bold"
+            style={{ color: 'var(--accent-2)' }}
+          >
+            <ChevronLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" />
+            뒤로 가기
+          </Link>
+
+          {isCreator && (
+            <button 
+              onClick={() => setShowSettings(true)}
+              className="p-3 rounded-2xl bg-zinc-100 dark:bg-zinc-900 border border-black/5 dark:border-white/10 text-zinc-500 hover:text-[var(--accent-1)] transition-all hover:scale-110 active:rotate-90"
+              title="관리 설정"
+            >
+              <Settings className="w-6 h-6" />
+            </button>
+          )}
+        </div>
 
         {/* Hero Section */}
         <PremiumHover 
@@ -271,9 +287,27 @@ export default function ClientDetailWrapper() {
           </div>
         </div>
 
-        <FeedbackSection worldcupId={detail.id} />
+         <FeedbackSection worldcupId={detail.id} />
         <CommentSection worldcupId={detail.id} />
       </div>
+
+      {detail && (
+        <WorldcupSettingsModal
+          isOpen={showSettings}
+          onClose={() => setShowSettings(false)}
+          worldcup={detail}
+          onUpdate={(updatedData) => {
+            setDetail((prev: any) => ({
+              ...prev,
+              ...updatedData
+            }))
+          }}
+          onDeleted={() => {
+            router.push('/worldcup')
+            router.refresh()
+          }}
+        />
+      )}
     </div>
   )
 }
