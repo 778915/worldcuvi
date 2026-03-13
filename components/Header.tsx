@@ -301,7 +301,7 @@ export default function Header() {
             <button
               id="header-login-btn"
               onClick={() => openLoginModal()}
-              className="btn-hover flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-medium transition-all shadow-lg hover:opacity-90"
+              className="btn-hover login-aura-effect flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-medium transition-all shadow-lg hover:opacity-90"
               style={{ backgroundColor: 'var(--accent-1)' }}
             >
               <LogIn className="w-4 h-4" />

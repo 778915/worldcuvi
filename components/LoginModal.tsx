@@ -22,8 +22,22 @@ export default function LoginModal() {
   }, [loginModalOpen])
 
   const signIn = async (provider: 'google' | 'discord') => {
+    // 💡 redirectTo URL을 환경변수 또는 현재 도메인 기반으로 동적 생성
+    const getRedirectUrl = () => {
+      if (typeof window === 'undefined') return ''
+      
+      const origin = window.location.origin
+      // Vercel Preview URL 또는 실제 도메인이 worldcuvi.world인 경우 해당 도메인 사용
+      if (origin.includes('worldcuvi.world') || origin.includes('vercel.app')) {
+        return `${origin}/auth/callback`
+      }
+      
+      // 로컬 개발 환경인 경우
+      return `${origin}/auth/callback`
+    }
+
     const options: Parameters<typeof supabase.auth.signInWithOAuth>[0]['options'] = {
-      redirectTo: `${window.location.origin}/auth/callback`,
+      redirectTo: getRedirectUrl(),
     }
 
     // Google은 YouTube 채널 정보 조회 스코프 추가 (창작자 본인 확인용)

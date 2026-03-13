@@ -117,3 +117,25 @@
 .gift-wobble-icon {
     animation: gift-wobble 0.6s ease-in-out infinite;
 }
+
+/* 6. Login Button - Breathing Aura & Scale */
+@keyframes login-breathe {
+    0%, 100% { 
+        box-shadow: 0 0 5px var(--accent-1), 0 0 10px var(--accent-1);
+        filter: brightness(1);
+    }
+    50% { 
+        box-shadow: 0 0 20px var(--accent-1), 0 0 30px var(--accent-1);
+        filter: brightness(1.2);
+    }
+}
+
+.login-aura-effect {
+    transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) !important;
+}
+
+.login-aura-effect:hover {
+    transform: scale(1.1) !important;
+    animation: login-breathe 2s infinite ease-in-out !important;
+    z-index: 60;
+}
