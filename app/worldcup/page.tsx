@@ -18,6 +18,18 @@ function formatPlays(n: number = 0) {
 }
 
 export default function WorldcupPage() {
+  return (
+    <React.Suspense fallback={
+      <div className="flex items-center justify-center py-20">
+        <div className="w-10 h-10 border-4 border-[var(--accent-1)] border-t-transparent animate-spin rounded-full"></div>
+      </div>
+    }>
+      <WorldcupListContent />
+    </React.Suspense>
+  )
+}
+
+function WorldcupListContent() {
   const { accentText } = useAccent()
   const searchParams = useSearchParams()
   const categoryParam = searchParams.get('category')

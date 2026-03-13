@@ -46,6 +46,7 @@ export async function generateMetadata(
   }
 }
 
-export default function WorldcupDetailPage() {
+export default async function WorldcupDetailPage({ params }: Props) {
+  const { id } = await params
   return <ClientDetailWrapper />
 }

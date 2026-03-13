@@ -14,6 +14,37 @@ import { useAuth } from '@/components/AuthProvider'
 import { motion, AnimatePresence } from 'framer-motion'
 import PremiumHover from '@/components/PremiumHover'
 import WorldcupSettingsModal from '@/components/WorldcupSettingsModal'
+import VideoThumbnail from '@/components/VideoThumbnail'
+
+interface WorldcupDetail {
+  id: string
+  title: string
+  description: string
+  category: string
+  thumbnail_url: string
+  creatorId: string
+  creator?: {
+    nickname: string
+    is_plus_subscriber: boolean
+    is_creator: boolean
+    creator_grade: string
+  }
+  total_plays: number
+  total_views: number
+  participant_count: number
+  like_count: number
+  unlike_count: number
+  // Alignment properties for existing JSX
+  thumb: string
+  desc: string
+  isPlus: boolean
+  isCreator: boolean
+  creatorGrade: string
+  plays: number
+  views: number
+  participants: number
+  emoji: string
+}
 
 export default function ClientDetailWrapper() {
   const params = useParams()
@@ -23,12 +54,14 @@ export default function ClientDetailWrapper() {
   const { accentText } = useAccent()
   const supabase = createClient()
 
-  const [detail, setDetail] = useState<any>(null)
+  const [detail, setDetail] = useState<WorldcupDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [showShareMenu, setShowShareMenu] = useState(false)
   const [copied, setCopied] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
 
+  // This will need to be adjusted based on the new `detail` structure
+  // For now, assuming `detail.creator` exists and has `is_creator`
   const isCreator = user?.id === detail?.creatorId
 
   useEffect(() => {
@@ -52,26 +85,38 @@ export default function ClientDetailWrapper() {
         .single()
 
       if (data) {
-        setDetail({
+        const detailData: WorldcupDetail = {
           id: data.id,
           title: data.title,
-          desc: data.description || '창작자가 작성한 설명이 없습니다.',
-          creator: data.users?.nickname || '알 수 없는 유저',
+          description: data.description || '창작자가 작성한 설명이 없습니다.',
+          category: data.category || '기타',
+          thumbnail_url: data.thumbnail_url || 'https://images.unsplash.com/photo-1574629810360-7efbbe195018?w=800',
           creatorId: data.creator_id,
+          creator: data.users ? {
+            nickname: data.users.nickname,
+            is_plus_subscriber: data.users.is_plus_subscriber,
+            is_creator: data.users.is_creator,
+            creator_grade: data.users.creator_grade
+          } : undefined,
+          total_plays: data.total_plays || 0,
+          total_views: data.total_views || 0,
+          participant_count: data.participant_count || 0,
+          like_count: data.like_count || 0,
+          unlike_count: data.unlike_count || 0,
+          // Aliases
+          thumb: data.thumbnail_url || 'https://images.unsplash.com/photo-1574629810360-7efbbe195018?w=800',
+          desc: data.description || '창작자가 작성한 설명이 없습니다.',
           isPlus: data.users?.is_plus_subscriber || false,
           isCreator: data.users?.is_creator || true,
           creatorGrade: data.users?.creator_grade || 'Bronze',
           plays: data.total_plays || 0,
           views: data.total_views || 0,
           participants: data.participant_count || 0,
-          likes: data.like_count || 0,
-          unlikes: data.unlike_count || 0,
-          thumb: data.thumbnail_url || 'https://images.unsplash.com/photo-1574629810360-7efbbe195018?w=800',
-          category: data.category || '기타',
-          score: data.score || 0,
           emoji: '🏆'
-        })
-      } else if (error) {
+        }
+        setDetail(detailData)
+      }
+ else if (error) {
         console.error('Data fetch error detail:', error);
       }
       setLoading(false)
@@ -152,11 +197,11 @@ export default function ClientDetailWrapper() {
           onClick={() => router.push(`/worldcup/${id}/play`)}
           className="detail-photo-container relative aspect-[1.91/1] rounded-3xl overflow-hidden mb-12 shadow-2xl group border border-white/10 dark:bg-black"
         >
-          <img 
-            src={detail.thumb} 
-            alt={detail.title} 
-            className="absolute inset-0 w-full h-full object-cover transition-transform duration-1000 group-hover:scale-110" 
-          />
+        <VideoThumbnail 
+          videoId={undefined} 
+          thumbnailUrl={detail?.thumbnail_url || ''} 
+          title={detail?.title || ''} 
+        />
           <div className="absolute inset-0 bg-gradient-to-t from-black via-black/30 to-transparent opacity-60 group-hover:opacity-80 transition-opacity" />
           
           {/* Play Overlay */}
@@ -172,17 +217,17 @@ export default function ClientDetailWrapper() {
           <div className="absolute inset-0 flex flex-col justify-end p-8 pointer-events-none">
             <div className="flex items-center gap-3 mb-4">
               <span className="px-3 py-1 bg-white/20 backdrop-blur-md rounded-full text-white text-xs font-bold border border-white/20">
-                {detail.category}
+                {detail?.category}
               </span>
               <span className="flex items-center gap-1.5 text-white/80 text-xs font-medium">
                 <Users className="w-4 h-4" />
-                {detail.participants.toLocaleString()}명 참여 중
+                {detail?.participant_count.toLocaleString() || '0'}명 참여 중
               </span>
             </div>
             <h1 className="text-4xl md:text-5xl font-black text-white mb-4 flex items-center gap-3">
-              {detail.emoji} {detail.title}
+              {detail?.emoji} {detail?.title}
             </h1>
-            <p className="text-zinc-200 text-lg font-medium max-w-2xl">{detail.desc}</p>
+            <p className="text-zinc-200 text-lg font-medium max-w-2xl">{detail?.description}</p>
           </div>
         </PremiumHover>
 
@@ -191,53 +236,51 @@ export default function ClientDetailWrapper() {
           <div className="flex items-center gap-8">
             <div className="text-center">
               <p className="text-xs font-bold uppercase tracking-wider mb-1" style={{ color: 'var(--accent-2)' }}>PLAYS</p>
-              <p className="text-2xl font-black text-foreground">{detail.plays.toLocaleString()}</p>
+              <p className="text-2xl font-black text-foreground">{detail!.total_plays.toLocaleString()}</p>
             </div>
             <div className="w-px h-8 bg-black/10 dark:bg-white/10" />
             <div className="text-center">
               <p className="text-xs font-bold uppercase tracking-wider mb-1" style={{ color: 'var(--accent-2)' }}>VIEWS</p>
-              <p className="text-2xl font-black text-foreground">{detail.views.toLocaleString()}</p>
+              <p className="text-2xl font-black text-foreground">{detail!.total_views.toLocaleString()}</p>
             </div>
             <div className="w-px h-8 bg-black/10 dark:bg-white/10" />
             <div className="text-center">
               <p className="text-xs font-black uppercase tracking-[0.2em] mb-3" style={{ color: 'var(--accent-2)' }}>CREATOR</p>
               <div className="flex items-center gap-4 group/creator">
-                {/* Premium Avatar Circle */}
-                {detail.isPlus ? (
-                   <PremiumUserBadge size="avatar" className="transition-all duration-500 group-hover/creator:scale-110 shadow-2xl" />
+                {detail!.creator?.is_plus_subscriber ? (
+                  <PremiumUserBadge size="avatar" className="transition-all duration-500 group-hover/creator:scale-110 shadow-2xl" />
                 ) : (
                   <div 
                     className="relative w-12 h-12 rounded-full flex items-center justify-center text-base font-black shadow-2xl transition-all duration-500 group-hover/creator:scale-110"
                     style={{ 
-                      background: detail.isCreator ? `linear-gradient(135deg, ${(detail.creatorGrade?.toLowerCase() === 'gold' ? '#FFD700' : detail.creatorGrade?.toLowerCase() === 'silver' ? '#C0C0C0' : detail.creatorGrade?.toLowerCase() === 'bronze' ? '#CD7F32' : 'var(--accent-1)')}, color-mix(in srgb, ${(detail.creatorGrade?.toLowerCase() === 'gold' ? '#FFD700' : detail.creatorGrade?.toLowerCase() === 'silver' ? '#C0C0C0' : detail.creatorGrade?.toLowerCase() === 'bronze' ? '#CD7F32' : 'var(--accent-1)')} 60%, black))` : 'var(--accent-1)',
-                      color: (detail.creatorGrade?.toLowerCase() === 'gold' || detail.creatorGrade?.toLowerCase() === 'silver') ? '#4b3200' : 'white',
-                      boxShadow: detail.isCreator ? `0 0 20px color-mix(in srgb, ${(detail.creatorGrade?.toLowerCase() === 'gold' ? '#FFD700' : detail.creatorGrade?.toLowerCase() === 'silver' ? '#C0C0C0' : detail.creatorGrade?.toLowerCase() === 'bronze' ? '#CD7F32' : 'var(--accent-1)')} 30%, transparent)` : 'none'
+                      background: detail!.isCreator ? `linear-gradient(135deg, ${(detail!.creatorGrade?.toLowerCase() === 'gold' ? '#FFD700' : detail!.creatorGrade?.toLowerCase() === 'silver' ? '#C0C0C0' : detail!.creatorGrade?.toLowerCase() === 'bronze' ? '#CD7F32' : 'var(--accent-1)')}, color-mix(in srgb, ${(detail!.creatorGrade?.toLowerCase() === 'gold' ? '#FFD700' : detail!.creatorGrade?.toLowerCase() === 'silver' ? '#C0C0C0' : detail!.creatorGrade?.toLowerCase() === 'bronze' ? '#CD7F32' : 'var(--accent-1)')} 60%, black))` : 'var(--accent-1)',
+                      color: (detail!.creatorGrade?.toLowerCase() === 'gold' || detail!.creatorGrade?.toLowerCase() === 'silver') ? '#4b3200' : 'white',
+                      boxShadow: detail!.isCreator ? `0 0 20px color-mix(in srgb, ${(detail!.creatorGrade?.toLowerCase() === 'gold' ? '#FFD700' : detail!.creatorGrade?.toLowerCase() === 'silver' ? '#C0C0C0' : detail!.creatorGrade?.toLowerCase() === 'bronze' ? '#CD7F32' : 'var(--accent-1)')} 30%, transparent)` : 'none'
                     }}
                   >
-                    <span className="relative z-10">{detail.creator ? detail.creator.charAt(0).toUpperCase() : '?'}</span>
-                    {/* Outer Ring */}
+                    <span className="relative z-10">{detail!.creator ? detail!.creator.nickname.charAt(0).toUpperCase() : '?'}</span>
                     <div 
                       className="absolute -inset-1 rounded-full border border-white/20 opacity-50 animate-[spin_8s_linear_infinite]"
-                      style={{ borderColor: (detail.creatorGrade?.toLowerCase() === 'gold' ? 'rgba(255,215,0,0.4)' : detail.creatorGrade?.toLowerCase() === 'silver' ? 'rgba(192,192,192,0.4)' : detail.creatorGrade?.toLowerCase() === 'bronze' ? 'rgba(205,127,50,0.4)' : 'rgba(255,255,255,0.2)') }}
+                      style={{ borderColor: (detail!.creatorGrade?.toLowerCase() === 'gold' ? 'rgba(255,215,0,0.4)' : detail!.creatorGrade?.toLowerCase() === 'silver' ? 'rgba(192,192,192,0.4)' : detail!.creatorGrade?.toLowerCase() === 'bronze' ? 'rgba(205,127,50,0.4)' : 'rgba(255,255,255,0.2)') }}
                     />
                   </div>
                 )}
                 
                 <div className="flex flex-col">
                   <div className="flex items-center gap-2 mb-0.5">
-                    {detail.isCreator && <CreatorBadge grade={detail.creatorGrade} className="scale-75 origin-left" />}
+                    {detail!.isCreator && <CreatorBadge grade={detail!.creatorGrade} className="scale-75 origin-left" />}
                   </div>
                   <p 
-                    className={`text-lg font-bold leading-tight ${detail.isPlus ? 'plus-nickname' : (detail.isCreator ? 'creator-name' : 'text-[var(--accent-2)]')}`}
-                    style={detail.isCreator ? { '--tier-color': (detail.creatorGrade?.toLowerCase() === 'gold' ? '#FFD700' : detail.creatorGrade?.toLowerCase() === 'silver' ? '#C0C0C0' : detail.creatorGrade?.toLowerCase() === 'bronze' ? '#CD7F32' : 'var(--accent-1)') } as any : {}}
+                    className={`text-lg font-bold leading-tight ${detail!.isPlus ? 'plus-nickname' : (detail!.isCreator ? 'creator-name' : 'text-[var(--accent-2)]')}`}
+                    style={detail!.isCreator ? { '--tier-color': (detail!.creatorGrade?.toLowerCase() === 'gold' ? '#FFD700' : detail!.creatorGrade?.toLowerCase() === 'silver' ? '#C0C0C0' : detail!.creatorGrade?.toLowerCase() === 'bronze' ? '#CD7F32' : 'var(--accent-1)') } as React.CSSProperties : {}}
                   >
-                    {detail.creator}
+                    {detail!.creator?.nickname || 'Anonymous'}
                   </p>
                 </div>
               </div>
             </div>
           </div>
-
+  
           <div className="flex items-center gap-3 w-full md:w-auto relative">
             <PremiumHover 
               onClick={() => router.push(`/worldcup/${id}/play`)}
@@ -286,21 +329,31 @@ export default function ClientDetailWrapper() {
             </div>
           </div>
         </div>
-
-         <FeedbackSection worldcupId={detail.id} />
-        <CommentSection worldcupId={detail.id} />
+  
+        <FeedbackSection worldcupId={detail!.id} />
+        <CommentSection worldcupId={detail!.id} />
       </div>
 
-      {detail && (
+      {showSettings && (
         <WorldcupSettingsModal
           isOpen={showSettings}
           onClose={() => setShowSettings(false)}
-          worldcup={detail}
+          worldcup={{
+            id: detail!.id,
+            title: detail!.title,
+            category: detail!.category,
+            desc: detail!.description
+          }}
           onUpdate={(updatedData) => {
-            setDetail((prev: any) => ({
-              ...prev,
-              ...updatedData
-            }))
+            setDetail((prev: WorldcupDetail | null) => {
+              if (!prev) return null
+              return {
+                ...prev,
+                ...updatedData,
+                description: updatedData.desc || prev.description,
+                desc: updatedData.desc || prev.desc
+              }
+            })
           }}
           onDeleted={() => {
             router.push('/worldcup')
