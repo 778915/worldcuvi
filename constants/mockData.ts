@@ -62,7 +62,7 @@ export const MOCK_PODIUM_WORLDCUPS: WorldCup[] = [
 ];
 
 export const MOCK_BANNERS: Banner[] = [
-  { id: 1, type: '공모전', title: '총 상금 1,000만원!\nWorldCuvi 챌린지', desc: '지금 바로 월드컵을 만들고 상금에 도전하세요', bg: 'from-violet-600 to-indigo-600' },
+  { id: 1, type: '안내', title: '당신이 가장 좋아하는\n영상에 투표하세요!', desc: '다양한 테마의 월드컵에 참여하고 당신의 취향을 공유해보세요', bg: 'from-violet-600 to-indigo-600' },
   { id: 2, type: '랭킹 #1', title: '주간 인기 월드컵 1', desc: '이번 주 가장 핫한 작품', bg: 'from-blue-600 to-cyan-600' },
   { id: 3, type: '랭킹 #2', title: '주간 인기 월드컵 2', desc: '놓치기 아쉬운 트렌드', bg: 'from-emerald-600 to-teal-600' },
   { id: 4, type: '랭킹 #3', title: '주간 인기 월드컵 3', desc: '유저들의 끝없는 선택', bg: 'from-orange-600 to-amber-600' },

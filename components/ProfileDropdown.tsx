@@ -327,16 +327,21 @@ export default function ProfileDropdown({ onClose }: Props) {
 
       {/* ── 다른 계정으로 로그인 ── */}
       <div className="px-4 py-3">
-        <Link
-          href="/login"
-          onClick={onClose}
-          className="flex items-center gap-2 text-sm text-gray-500 dark:text-zinc-400 hover:text-gray-700 dark:hover:text-zinc-200 transition-colors"
+        <button
+          onClick={() => {
+            handleSignOut();
+            setTimeout(() => {
+              const loginBtn = document.getElementById('header-login-btn');
+              if (loginBtn) loginBtn.click();
+            }, 500);
+          }}
+          className="flex items-center gap-2 text-sm text-gray-500 dark:text-zinc-400 hover:text-gray-700 dark:hover:text-zinc-200 transition-colors w-full text-left"
         >
           <span className="w-5 h-5 rounded-full border border-gray-300 dark:border-zinc-600 flex items-center justify-center">
             <Plus className="w-3 h-3" />
           </span>
-          다른 계정으로 로그인
-        </Link>
+          다른 계정으로 로그인 (재인증)
+        </button>
       </div>
     </div>
   )

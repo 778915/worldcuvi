@@ -230,7 +230,7 @@ export default function Header() {
 
         {/* 오른쪽 영역 */}
         <div className="flex items-center gap-1 lg:gap-2">
-          {(!loading && user) || true ? (
+          {(!loading && user) ? (
             <>
               {/* 알림 */}
               <button 

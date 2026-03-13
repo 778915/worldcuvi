@@ -59,6 +59,6 @@ export async function GET(request: Request) {
     }
   }
 
-  // 오류 시 로그인 페이지로 리다이렉트
-  return NextResponse.redirect(`${origin}/login?error=auth_callback_failed`)
+  // 오류 시 메인 페이지로 리다이렉트 (로그인 모달 유도)
+  return NextResponse.redirect(`${origin}/?error=auth_callback_failed`)
 }
