@@ -89,8 +89,16 @@ export default function WorldcupSettingsModal({ isOpen, onClose, worldcup, onUpd
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-[999] bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <motion.div 
+        key="settings-backdrop"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="fixed inset-0 z-[999] bg-black/60 backdrop-blur-sm" 
+        onClick={onClose} 
+      />
       <motion.div
+        key="settings-modal"
         initial={{ opacity: 0, scale: 0.9, y: 20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.9, y: 20 }}
