@@ -12,6 +12,7 @@ import Image from 'next/image'
 import { MOCK_NOTIFICATIONS, MOCK_BOOSTERS, Notification, Booster } from '@/constants/mockData'
 import BoosterButton from './BoosterButton'
 import BoosterModal from './BoosterModal'
+import SettingsModal from './SettingsModal'
 import './HeaderAnimations.css'
 
 const NAV_LINKS = [
@@ -306,6 +307,7 @@ export default function Header() {
       </div>
 
       <BoosterModal />
+      <SettingsModal />
 
       {/* 동적 포포버 (Dynamic Popover 모달) */}
       {activePopover !== 'none' && (
@@ -327,8 +329,14 @@ export default function Header() {
               <div className="p-4 w-full sm:w-64 bg-white dark:bg-zinc-900">
                 <h3 className="font-bold mb-3 px-2" style={{ color: 'var(--accent-2)' }}>장르 선택</h3>
                 <div className="grid grid-cols-2 gap-2">
-                  {['애니메이션', '스포츠', '게임', '연예인', '음식', '음악'].map(genre => (
-                    <button key={genre} className="btn-hover hover:scale-105 px-4 py-2.5 text-sm text-left rounded-xl transition-all border border-transparent"
+                  {['애니메이션', '스포츠', '게임', '연예인/인플루언서', '음식', '음악', '동물/힐링', '영화/드라마', '명언/망언', '기타'].map(genre => (
+                    <button 
+                      key={genre} 
+                      onClick={() => {
+                        closePopover();
+                        router.push(`/worldcup?category=${encodeURIComponent(genre)}`);
+                      }}
+                      className="btn-hover hover:scale-105 px-4 py-2.5 text-xs text-left rounded-xl transition-all border border-transparent"
                       style={{
                         backgroundColor: 'color-mix(in srgb, var(--accent-1) 8%, transparent)',
                         color: 'var(--accent-2)'

@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
     let isPlus = false
     if (user) {
       const { data: profile } = await supabase
-        .from('profiles')
+        .from('users')
         .select('is_plus_subscriber')
         .eq('id', user.id)
         .single()
@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
       [필수 JSON 출력 구조] - 반드시 이 키(key)값들을 지켜서 JSON 객체 1개만 반환할 것.
       {
         "title": "도파민 터지는 10~25자 월드컵 제목 (예: 고막 녹는 텐코 시부키 YOASOBI)",
-        "genre": "이 월드컵의 메인 장르 및 정체성 한 줄 요약",
+        "genre": "반드시 다음 리스트 중 하나만 선택: ['애니메이션', '스포츠', '게임', '연예인/인플루언서', '음식', '음악', '동물/힐링', '영화/드라마', '명언/망언', '기타']",
         "reaction": "이 주제에 대한 예상 대중/팬덤의 반응 및 바이럴 포인트 분석",
         "competitiveness": "이 월드컵이 사람들의 클릭을 유도하는 킬러 포인트와 경쟁력",
         "confidence": 98 // 0~100 사이의 AI 분석 확신도 (숫자만)
@@ -42,7 +42,8 @@ export async function POST(req: NextRequest) {
 
       [조건]
       1. 제목(title)은 밋밋한 설명 말고 유튜브 썸네일처럼 자극적이고 힙하게.
-      2. 부가 설명 절대 금지. 오직 JSON 데이터만 출력해.
+      2. genre(카테고리)는 반드시 제공된 리스트에서 가장 적절한 하나를 골라 문자열 그대로 출력해. 다른 설명을 덧붙이지 마.
+      3. 부가 설명 절대 금지. 오직 JSON 데이터만 출력해.
     `
 
     const prompt = `[입력된 영상 원본 제목들]\n${titles.join(', ')}`

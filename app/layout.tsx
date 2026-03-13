@@ -57,9 +57,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             `,
           }}
         />
-        {/* Adsterra Popunder Script (Production Only) */}
         {process.env.NODE_ENV === 'production' && (
-          <script src="https://pl28905487.effectivegatecpm.com/da/2c/c8/da2cc85d141f9144e72f86860df06c50.js" async />
+          <script src="https://pl28911304.effectivegatecpm.com/e2/56/58/e25658dfd451cd6eaa156cc46b9004d1.js" async />
         )}
       </head>
       <body

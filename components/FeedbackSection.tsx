@@ -30,40 +30,90 @@ export default function FeedbackSection({
   const supabase = createClient()
   const tooltipTimerRef = useRef<NodeJS.Timeout | null>(null)
 
+  useEffect(() => {
+    const fetchUserVote = async () => {
+      if (!user) return;
+      const { data, error } = await supabase
+        .from('worldcup_feedback_logs')
+        .select('is_like')
+        .eq('worldcup_id', worldcupId)
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      if (data) {
+        setVote(data.is_like ? 'like' : 'unlike');
+      }
+    };
+    fetchUserVote();
+  }, [worldcupId, user]);
+
+  // Fetch counts from DB to ensure they are cumulative
+  const fetchCounts = async () => {
+    const { data, error } = await supabase
+      .from('worldcups')
+      .select('like_count, unlike_count')
+      .eq('id', worldcupId)
+      .single();
+    
+    if (data) {
+      setLikes(data.like_count || 0);
+      setUnlikes(data.unlike_count || 0);
+    }
+  };
+
+  useEffect(() => {
+    fetchCounts();
+  }, [worldcupId]);
+
   const handleFeedback = async (type: 'like' | 'unlike') => {
     if (!user) {
       alert("로그인이 필요한 기능입니다.");
       return;
     }
 
-    // Toggle logic (Client-side sync) - Simplification: We favor DB truth
-    // DB will prevent duplicates via UNIQUE constraint in worldcup_feedback_logs
+    // Optimistic UI update for immediate feedback
+    const prevVote = vote;
+    const isRemove = vote === type;
+    const isSwitch = vote !== null && vote !== type;
+
     try {
-      const { error } = await supabase.rpc('handle_worldcup_feedback', {
+      // Immediate UI update before server response
+      if (isRemove) {
+        setVote(null);
+        if (type === 'like') setLikes(v => Math.max(0, v - 1));
+        else setUnlikes(v => Math.max(0, v - 1));
+      } else if (isSwitch) {
+        setVote(type);
+        if (type === 'like') {
+          setLikes(v => v + 1);
+          setUnlikes(v => Math.max(0, v - 1));
+        } else {
+          setUnlikes(v => v + 1);
+          setLikes(v => Math.max(0, v - 1));
+        }
+      } else {
+        setVote(type);
+        if (type === 'like') setLikes(v => v + 1);
+        else setUnlikes(v => v + 1);
+      }
+
+      const { data: res, error } = await supabase.rpc('handle_worldcup_feedback', {
         target_worldcup_id: worldcupId,
         target_user_id: user.id,
-        is_like: type === 'like'
+        p_is_like: type === 'like'
       });
 
-      if (error) {
-        if (error.code === '23505') {
-          alert("이미 투표하셨습니다!");
-        } else {
-          throw error;
-        }
-        return;
-      }
+      if (error) throw error;
+      
+      // Secondary fetch to reconcile with DB truth
+      fetchCounts();
+      if (res === 'added' && type === 'like') triggerTooltip();
 
-      // Success UI update
-      setVote(type);
-      if (type === 'like') {
-        setLikes(prev => prev + 1);
-        triggerTooltip();
-      } else {
-        setUnlikes(prev => prev + 1);
-      }
-    } catch (err) {
-      console.error("Feedback failed:", err);
+    } catch (err: any) {
+      console.error("Feedback failed:", err.message);
+      // Revert on error
+      setVote(prevVote);
+      fetchCounts();
     }
   }
 
@@ -76,7 +126,7 @@ export default function FeedbackSection({
   }
 
   return (
-    <div className="relative flex items-center justify-center gap-16 py-14 border border-black/5 dark:border-white/10 bg-white dark:bg-black rounded-[3rem] mt-16 shadow-[0_40px_80px_-15px_rgba(0,0,0,0.3)] group/fb">
+    <div className="relative flex items-center justify-center gap-16 py-14 border border-black/5 dark:border-white/10 bg-white dark:bg-zinc-950 rounded-[3rem] mt-16 shadow-[0_40px_80px_-15px_rgba(0,0,0,0.3)] group/fb">
       <div className="absolute top-0 left-0 w-full h-[2px] bg-gradient-to-r from-transparent via-[#bf953f] to-transparent opacity-40 group-hover/fb:opacity-100 transition-opacity duration-700 pointer-events-none" />
       
       {/* Tooltip Overlay */}
@@ -107,28 +157,28 @@ export default function FeedbackSection({
       {/* 추천 */}
       <div 
         onClick={() => handleFeedback('like')}
-        className={`group flex flex-col items-center gap-3 cursor-pointer transition-all ${vote === 'like' ? 'text-[var(--accent-1)]' : 'text-zinc-500'}`}
+        className={`group flex flex-col items-center gap-4 cursor-pointer transition-all premium-hover ${vote === 'like' ? 'text-[var(--accent-1)] scale-110' : 'text-zinc-500'}`}
       >
-        <div className={`p-4 rounded-2xl transition-all ${vote === 'like' ? 'bg-[var(--accent-1)]/10 scale-110' : 'bg-white dark:bg-zinc-900 group-hover:bg-zinc-100 dark:group-hover:bg-zinc-800'}`}>
-          <ThumbsUp className={`w-8 h-8 transition-transform group-hover:scale-125 ${vote === 'like' ? 'fill-[var(--accent-1)] animate-[keyframes-fill_0.3s_ease]' : ''}`} />
+        <div className={`p-6 rounded-3xl transition-all ${vote === 'like' ? 'bg-[var(--accent-1)]/30 shadow-[0_0_40px_10px_rgba(168,85,247,0.4)] border-2 border-[var(--accent-1)]' : 'bg-white dark:bg-zinc-900 border border-transparent dark:border-white/5 shadow-inner'}`}>
+          <ThumbsUp className={`w-10 h-10 transition-transform ${vote === 'like' ? 'fill-[var(--accent-1)] animate-pulse' : ''}`} />
         </div>
-        <div className="flex flex-col items-center">
-          <span className="text-sm font-black" style={{ color: accentText }}>추천</span>
-          <RollingNumber value={likes} className="feedback-count-label text-xs font-bold opacity-70" style={{ color: accentText }} />
+        <div className="flex flex-col items-center leading-tight">
+          <span className="text-base font-black tracking-tighter" style={{ color: accentText }}>추천</span>
+          <RollingNumber value={likes} className="text-sm font-black opacity-90 mt-1" style={{ color: accentText }} />
         </div>
       </div>
 
       {/* 비추천 */}
       <div 
         onClick={() => handleFeedback('unlike')}
-        className={`group flex flex-col items-center gap-3 cursor-pointer transition-all ${vote === 'unlike' ? 'text-zinc-400' : 'text-zinc-500'}`}
+        className={`group flex flex-col items-center gap-4 cursor-pointer transition-all premium-hover ${vote === 'unlike' ? 'text-white scale-110' : 'text-zinc-500'}`}
       >
-        <div className={`p-4 rounded-2xl transition-all ${vote === 'unlike' ? 'bg-zinc-400/10 scale-110' : 'bg-white dark:bg-zinc-900 group-hover:bg-zinc-100 dark:group-hover:bg-zinc-800'}`}>
-          <ThumbsDown className={`w-8 h-8 transition-transform group-hover:scale-125 ${vote === 'unlike' ? 'fill-zinc-400 animate-[keyframes-fill_0.3s_ease]' : ''}`} />
+        <div className={`p-6 rounded-3xl transition-all ${vote === 'unlike' ? 'bg-zinc-400/40 shadow-[0_0_40px_10px_rgba(156,163,175,0.4)] border-2 border-zinc-400' : 'bg-white dark:bg-zinc-900 border border-transparent dark:border-white/5 shadow-inner'}`}>
+          <ThumbsDown className={`w-10 h-10 transition-transform ${vote === 'unlike' ? 'fill-white animate-pulse' : ''}`} />
         </div>
-        <div className="flex flex-col items-center">
-          <span className="text-sm font-black" style={{ color: accentText }}>비추천</span>
-          <RollingNumber value={unlikes} className="feedback-count-label text-xs font-bold opacity-70" style={{ color: accentText }} />
+        <div className="flex flex-col items-center leading-tight">
+          <span className="text-base font-black tracking-tighter" style={{ color: accentText }}>비추천</span>
+          <RollingNumber value={unlikes} className="text-sm font-black opacity-90 mt-1" style={{ color: accentText }} />
         </div>
       </div>
     </div>

@@ -2,16 +2,23 @@
 
 /* ── CSS Variables ─────────────────────────────────────── */
 :root {
-  --accent-1: #a855f7; /* Main action & Theme color (Purple) */
-  --accent-2: #bf953f; /* Text & Sub point (Gold) */
+  --accent-1: #a855f7; /* Icons & Key Actions */
+  --accent-2: #bf953f; /* All Text */
+  --accent-3: #ffffff; /* All Backgrounds */
   
-  --background: #f9fafb;
-  --foreground: #111827;
+  --background: var(--accent-3);
+  --foreground: var(--accent-2);
+}
+
+::selection {
+  background-color: var(--accent-2);
+  color: var(--accent-3) !important; 
 }
 
 .dark {
-  --background: #030712;
-  --foreground: #f9fafb;
+  --background: #000000;
+  --foreground: #ffffff;
+  --accent-2: #bf953f; 
 }
 
 @theme inline {
@@ -58,17 +65,26 @@ body {
 }
 
 @layer components {
-  .btn-hover {
-    @apply transition-all duration-300 ease-out active:scale-95 hover:scale-105 hover:brightness-110;
+  .premium-hover {
+    @apply transition-all duration-300 ease-out cursor-pointer;
   }
-  .card-hover {
-    @apply transition-all duration-300 ease-out;
+  .premium-hover:hover {
+    transform: scale(1.1) !important;
+    animation: premiumAura 2.5s infinite ease-in-out;
+    z-index: 50;
   }
-  .card-hover:hover {
-    transform: translateY(-4px);
-    border-color: var(--accent);
-    box-shadow: 0 10px 30px -10px color-mix(in srgb, var(--accent) 30%, transparent);
-  }
+}
+
+@keyframes premiumAura {
+  0%, 100% { box-shadow: 0 0 15px 5px color-mix(in srgb, var(--accent-1) 25%, transparent); }
+  50% { box-shadow: 0 0 40px 15px color-mix(in srgb, var(--accent-1) 50%, transparent); }
+}
+
+@keyframes boosterParticle {
+  0% { transform: translateY(0); opacity: 0; }
+  20% { opacity: 1; }
+  80% { opacity: 1; }
+  100% { transform: translateY(-70px); opacity: 0; }
 }
 
 /* ── 모달 애니메이션 ─────────────────────────────────────── */

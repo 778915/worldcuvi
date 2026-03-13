@@ -1,32 +1,86 @@
+'use client'
+
+import React, { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { Trophy, Search, SlidersHorizontal, Play, Clock, Flame, Star, Zap } from 'lucide-react'
+import { useSearchParams } from 'next/navigation'
+import { useAccent } from '@/components/ThemeProvider'
+import { createClient } from '@/lib/supabase/client'
+import { motion, AnimatePresence } from 'framer-motion'
+import VideoThumbnail from '@/components/VideoThumbnail'
+import PremiumHover from '@/components/PremiumHover'
 
-const CATEGORIES = ['전체', '연예', '스포츠', '음식', '게임', '애니', '여행', '기타']
+const CATEGORIES = ['전체', '애니메이션', '스포츠', '게임', '연예인/인플루언서', '음식', '음악', '동물/힐링', '영화/드라마', '명언/망언', '기타']
 
-const WORLDCUPS = [
-  { id: '1', title: '역대 최고 축구 선수 월드컵', emoji: '⚽', category: '스포츠', plays: 128400, color: 'from-green-500/20 to-emerald-500/10', badge: 'hot' },
-  { id: '2', title: '2024 K-POP 아이돌 월드컵', emoji: '🎤', category: '연예', plays: 95200, color: 'from-pink-500/20 to-rose-500/10', badge: 'new' },
-  { id: '3', title: '한국 음식 최강자 월드컵', emoji: '🍜', category: '음식', plays: 72000, color: 'from-orange-500/20 to-amber-500/10', badge: null },
-  { id: '4', title: '역대 최고 애니메이션 월드컵', emoji: '🎌', category: '애니', plays: 64300, color: 'from-blue-500/20 to-cyan-500/10', badge: null },
-  { id: '5', title: '드림 여행지 월드컵', emoji: '✈️', category: '여행', plays: 58100, color: 'from-violet-500/20 to-purple-500/10', badge: null },
-  { id: '6', title: '최고의 게임 캐릭터 월드컵', emoji: '🎮', category: '게임', plays: 49800, color: 'from-indigo-500/20 to-blue-500/10', badge: null },
-  { id: '7', title: '역대 최강 MLB 선수 월드컵', emoji: '⚾', category: '스포츠', plays: 41200, color: 'from-sky-500/20 to-blue-500/10', badge: null },
-  { id: '8', title: '최고의 한국 드라마 월드컵', emoji: '📺', category: '연예', plays: 38700, color: 'from-rose-500/20 to-pink-500/10', badge: 'new' },
-  { id: '9', title: '세계 디저트 최강자 월드컵', emoji: '🍰', category: '음식', plays: 32100, color: 'from-yellow-500/20 to-amber-500/10', badge: null },
-]
-
-function formatPlays(n: number) {
+function formatPlays(n: number = 0) {
   if (n >= 10000) return `${(n / 10000).toFixed(1)}만`
   return n.toLocaleString()
 }
 
-const BADGE_STYLES: Record<string, string> = {
-  hot: 'bg-orange-500 text-white border-orange-600 shadow-lg shadow-orange-500/20',
-  new: 'bg-green-500 text-white border-green-600 shadow-lg shadow-green-500/20',
-}
-const BADGE_LABELS: Record<string, string> = { hot: '🔥 HOT', new: '✨ NEW' }
-
 export default function WorldcupPage() {
+  const { accentText } = useAccent()
+  const searchParams = useSearchParams()
+  const categoryParam = searchParams.get('category')
+  
+  const [worldcups, setWorldcups] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [search, setSearch] = useState('')
+  const [activeCategory, setActiveCategory] = useState(categoryParam || '전체')
+  const supabase = createClient()
+
+  useEffect(() => {
+    if (categoryParam) {
+      setActiveCategory(categoryParam)
+    }
+  }, [categoryParam])
+
+  const fetchWorldcups = async () => {
+    setLoading(true)
+    let query = supabase
+      .from('worldcups')
+      .select(`
+        *,
+        creator:creator_id (nickname, creator_grade)
+      `)
+      .eq('status', 'active')
+      
+    if (activeCategory !== '전체') {
+      query = query.eq('category', activeCategory)
+    }
+
+    if (search) {
+      query = query.ilike('title', `%${search}%`)
+    }
+
+    const { data, error } = await query.order('created_at', { ascending: false })
+    if (data) setWorldcups(data)
+    setLoading(false)
+  }
+
+  useEffect(() => {
+    fetchWorldcups()
+
+    // [추가] 실시간 신규 등록 감지 (즉각 반영 요구사항)
+    const channel = supabase
+      .channel('public:worldcups')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'worldcups' }, async (payload: any) => {
+        // [수정] 신규 등록 시 작성자 정보(nickname) 수동 보충
+        const { data: creatorData } = await supabase
+          .from('users')
+          .select('nickname, creator_grade')
+          .eq('id', payload.new.creator_id)
+          .single();
+        
+        const newWc = { ...payload.new, creator: creatorData };
+        setWorldcups(prev => [newWc, ...prev])
+      })
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [activeCategory, search])
+
   return (
     <div className="min-h-[calc(100vh-4rem)] max-w-7xl mx-auto px-6 py-12">
       {/* 헤더 */}
@@ -35,7 +89,7 @@ export default function WorldcupPage() {
           <Trophy className="w-6 h-6 text-[var(--accent-2)]" />
           <h1 className="text-3xl font-extrabold text-[var(--accent-2)]">월드컵 탐색</h1>
         </div>
-        <p className="text-zinc-500 dark:text-zinc-400">다양한 주제의 이상형 월드컵을 발견하고 즐겨보세요</p>
+        <p style={{ color: 'var(--accent-2)' }}>다양한 주제의 이상형 월드컵을 발견하고 즐겨보세요</p>
       </div>
 
       {/* 검색 + 필터 */}
@@ -45,7 +99,9 @@ export default function WorldcupPage() {
           <input
             id="worldcup-search"
             type="text"
-            placeholder="월드컵 검색..."
+            placeholder="월드컵 제목으로 검색..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
             className="w-full bg-zinc-100 dark:bg-zinc-900 border border-black/5 dark:border-white/10 rounded-xl pl-11 pr-4 py-3.5 text-[var(--accent-2)] placeholder:text-zinc-400 dark:placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-[var(--accent-1)]/20 transition-all font-medium"
           />
         </div>
@@ -57,13 +113,14 @@ export default function WorldcupPage() {
 
       {/* 카테고리 탭 */}
       <div className="flex gap-2 overflow-x-auto pb-2 mb-8 scrollbar-hide">
-        {CATEGORIES.map((cat, i) => (
+        {CATEGORIES.map((cat) => (
           <button
             key={cat}
             id={`category-${cat}`}
+            onClick={() => setActiveCategory(cat)}
             className={`shrink-0 px-5 py-2.5 rounded-xl text-sm font-bold transition-all shadow-sm ${
-              i === 0
-                ? 'bg-[var(--accent-1)] text-white shadow-[var(--accent-1)]/20'
+              activeCategory === cat
+                ? 'bg-[var(--accent-1)] text-white shadow-[var(--accent-1)]/20 shadow-lg'
                 : 'bg-zinc-100 dark:bg-zinc-900 border border-black/5 dark:border-white/10 text-[var(--accent-2)] hover:bg-zinc-200 dark:hover:bg-zinc-800'
             }`}
           >
@@ -76,68 +133,60 @@ export default function WorldcupPage() {
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-2">
           <Flame className="w-4 h-4 text-orange-500" />
-          <span className="text-[var(--accent-2)] text-sm font-medium">{WORLDCUPS.length}개의 월드컵</span>
-        </div>
-        <div className="flex items-center gap-1 text-sm">
-          {[
-            { icon: Flame, label: '인기순' },
-            { icon: Star, label: '평점순' },
-            { icon: Zap, label: '최신순' },
-          ].map(({ icon: Icon, label }, i) => (
-            <button
-              key={label}
-              className={`flex items-center gap-1 px-3 py-1.5 rounded-lg transition-colors font-bold ${
-                i === 0 ? 'bg-[var(--accent-1)] text-white' : 'text-[var(--accent-2)] hover:bg-black/5 dark:hover:bg-white/5'
-              }`}
-            >
-              <Icon className="w-3.5 h-3.5" />
-              {label}
-            </button>
-          ))}
+          <span className="text-[var(--accent-2)] text-sm font-medium">{worldcups.length}개의 월드컵</span>
         </div>
       </div>
 
       {/* 카드 그리드 */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {WORLDCUPS.map((wc) => (
-          <Link
-            key={wc.id}
-            href={`/worldcup/${wc.id}`}
-            className="group relative bg-white dark:bg-zinc-950 border border-black/5 dark:border-white/10 rounded-2xl overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl hover:shadow-[var(--accent-1)]/10"
-          >
-            {/* 배지 */}
-            {wc.badge && (
-              <div className={`absolute top-3 left-3 z-10 text-xs font-bold px-2 py-0.5 rounded-full border ${BADGE_STYLES[wc.badge]}`}>
-                {BADGE_LABELS[wc.badge]}
-              </div>
-            )}
-            {/* 썸네일 */}
-            <div className={`h-36 bg-gradient-to-br ${wc.color} flex items-center justify-center relative`}>
-              <span className="text-6xl">{wc.emoji}</span>
-              <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                <div className="w-12 h-12 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center">
-                  <Play className="w-5 h-5 text-white fill-white" />
-                </div>
-              </div>
-            </div>
-            {/* 정보 */}
-            <div className="p-4 bg-white dark:bg-zinc-950">
-              <div className="flex items-start justify-between gap-2 mb-3">
-                <h3 className="font-bold text-[var(--accent-2)] text-base leading-snug group-hover:text-[var(--accent-1)] transition-colors line-clamp-2">
-                  {wc.title}
-                </h3>
-                <span className="shrink-0 text-[10px] font-black bg-[var(--accent-1)]/5 border border-[var(--accent-1)]/10 text-[var(--accent-1)] px-2 py-0.5 rounded-full uppercase tracking-tighter">
-                  {wc.category}
-                </span>
-              </div>
-              <div className="flex items-center gap-1.5 text-xs text-[var(--accent-2)] opacity-70 font-bold">
-                <Clock className="w-3.5 h-3.5" />
-                <span>{formatPlays(wc.plays)}회 플레이</span>
-              </div>
-            </div>
-          </Link>
-        ))}
-      </div>
+      {loading && worldcups.length === 0 ? (
+        <div className="flex items-center justify-center py-20">
+          <div className="w-10 h-10 border-4 border-[var(--accent-1)] border-t-transparent animate-spin rounded-full"></div>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          <AnimatePresence mode="popLayout">
+            {worldcups.map((wc) => (
+              <motion.div
+                layout
+                key={wc.id}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.9 }}
+              >
+                <PremiumHover className="rounded-[2rem] overflow-hidden">
+                  <div className="group relative bg-white dark:bg-zinc-950 border border-black/5 dark:border-white/10 h-full">
+                    <VideoThumbnail 
+                      videoId={wc.thumbnail_youtube_id} 
+                      thumbnailUrl={wc.thumbnail_url} 
+                      title={wc.title} 
+                    />
+                    <Link href={`/worldcup/${wc.id}`} className="p-6 block">
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="text-[10px] font-black bg-[var(--accent-1)]/10 text-[var(--accent-1)] px-3 py-1 rounded-full uppercase tracking-tighter border border-[var(--accent-1)]/10">
+                          {wc.category || '전체'}
+                        </span>
+                        <div className="flex items-center gap-1.5 text-[10px] text-zinc-400 font-bold uppercase tracking-widest">
+                          <Clock className="w-3.5 h-3.5" />
+                          {formatPlays(wc.total_plays)} PLAYS
+                        </div>
+                      </div>
+                      <h3 className="font-black text-[var(--accent-2)] text-lg leading-tight group-hover:text-[var(--accent-1)] transition-colors mb-2 line-clamp-2">
+                         {wc.title}
+                      </h3>
+                      <div className="flex items-center gap-2">
+                         <div className="w-6 h-6 rounded-full bg-zinc-200 dark:bg-zinc-800 flex items-center justify-center text-[10px] font-black text-zinc-400 uppercase">
+                            {wc.creator?.nickname?.[0] || 'U'}
+                         </div>
+                         <span className="text-xs text-zinc-500 font-medium">@{wc.creator?.nickname || 'Anonymous'}</span>
+                      </div>
+                    </Link>
+                  </div>
+                </PremiumHover>
+              </motion.div>
+            ))}
+          </AnimatePresence>
+        </div>
+      )}
     </div>
   )
 }

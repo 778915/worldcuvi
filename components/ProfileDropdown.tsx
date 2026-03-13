@@ -4,15 +4,16 @@ import { useRouter } from 'next/navigation'
 import { useTheme } from 'next-themes'
 import Image from 'next/image'
 import Link from 'next/link'
-import { Moon, Sun, Settings, Power, Plus, Star, X } from 'lucide-react'
+import { Moon, Sun, Settings, Power, Plus, Star, X, Zap } from 'lucide-react'
 import PremiumSubscribeButton from './PremiumSubscribeButton'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from './AuthProvider'
+import { useUI } from './UIProvider'
 import { useAccent, SKIN_COLORS } from './ThemeProvider'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { HexColorPicker } from 'react-colorful'
-import PlusUserBadge from './PlusUserBadge'
-import './PlusUserBadge.css'
+import PremiumUserBadge from './PremiumUserBadge'
+import './PremiumUserBadge.css'
 
 interface Props {
   onClose: () => void
@@ -21,16 +22,37 @@ interface Props {
 export default function ProfileDropdown({ onClose }: Props) {
   const { user, profile } = useAuth()
   const { theme, setTheme } = useTheme()
-  const { accentPrimaryId, accentTextId, accentPrimary, accentText, setAccentPrimary, setAccentText } = useAccent()
+  const { 
+    accentPrimaryId, accentTextId, accentBackgroundId,
+    accentPrimary, accentText, accentBackground,
+    setAccentPrimary, setAccentText, setAccentBackground 
+  } = useAccent()
+  const { openSettingsModal } = useUI()
   const router = useRouter()
   const supabase = createClient()
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  // ── 마우스 휠(미들클릭) 오토스크롤 방지 ──
+  useEffect(() => {
+    const el = menuRef.current
+    if (!el) return
+
+    const handleMouseDown = (e: MouseEvent) => {
+      if (e.button === 1) { // 휠 클릭
+        e.preventDefault()
+      }
+    }
+
+    el.addEventListener('mousedown', handleMouseDown)
+    return () => el.removeEventListener('mousedown', handleMouseDown)
+  }, [])
 
   // 로컬 색상 상태
   const [localPrimary, setLocalPrimary] = useState(() => accentPrimary)
   const [localText, setLocalText] = useState(() => accentText)
 
   // ★ 커스텀 팔레트 상태 (OS 팝업 대신 우리가 만든 팝업 사용)
-  const [pickerState, setPickerState] = useState<{ isOpen: boolean; target: 'primary' | 'text' }>({
+  const [pickerState, setPickerState] = useState<{ isOpen: boolean; target: 'primary' | 'text' | 'bg' }>({
     isOpen: false,
     target: 'primary',
   })
@@ -56,7 +78,7 @@ export default function ProfileDropdown({ onClose }: Props) {
 
   // 팔레트 닫을 때 히스토리에 딱 1번만 저장하는 함수
   const handleClosePicker = () => {
-    const finalHex = pickerState.target === 'primary' ? localPrimary : localText
+    const finalHex = pickerState.target === 'primary' ? localPrimary : pickerState.target === 'text' ? localText : accentBackground
     pushHistory(finalHex)
     setPickerState({ ...pickerState, isOpen: false })
   }
@@ -85,7 +107,7 @@ export default function ProfileDropdown({ onClose }: Props) {
   }
 
   return (
-    <div className="w-full sm:w-72 flex flex-col bg-white dark:bg-zinc-900 relative">
+    <div ref={menuRef} className="w-full sm:w-72 flex flex-col bg-white dark:bg-zinc-900 relative">
       {/* ── 프로필 헤더 ── */}
       <div className="flex flex-col items-center gap-2 pt-6 pb-4 px-4">
         {/* 아바타 */}
@@ -108,14 +130,14 @@ export default function ProfileDropdown({ onClose }: Props) {
             <p className={`font-semibold text-sm ${isSubscribed ? 'plus-nickname' : 'text-gray-900 dark:text-white'}`}>
               {nickname}
             </p>
-            {isSubscribed && <PlusUserBadge className="scale-90" />}
+            {isSubscribed && <PremiumUserBadge className="scale-90" />}
           </div>
-          <p className="text-xs text-gray-400">{user?.email}</p>
+          <p className="text-xs" style={{ color: accentText }}>{user?.email}</p>
           <button
             onClick={() => alert('결제 모달이 오픈됩니다. (미구현)')}
             className="mt-2.5 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/20 transition-colors btn-hover"
           >
-            <span className="w-4 h-4 rounded-full flex items-center justify-center text-[10px] text-white font-bold bg-yellow-500 shadow-sm">P</span>
+            <span className="w-4 h-4 rounded-full flex items-center justify-center text-[10px] text-zinc-900 font-bold bg-yellow-500 shadow-sm">P</span>
             <span className="text-sm font-bold" style={{ color: accentText }}>{(profile?.points || 0).toLocaleString()} P</span>
           </button>
         </div>
@@ -129,14 +151,17 @@ export default function ProfileDropdown({ onClose }: Props) {
           >
             {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
           </button>
-          <Link
-            href="/settings"
-            onClick={onClose}
+          <button
+            onClick={(e) => {
+              const rect = e.currentTarget.getBoundingClientRect()
+              openSettingsModal({ x: rect.left - 200, y: rect.bottom + 10 })
+              onClose()
+            }}
             className="w-9 h-9 rounded-full bg-gray-100 dark:bg-zinc-800 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:scale-110 transition-transform"
             aria-label="환경설정"
           >
             <Settings className="w-4 h-4" />
-          </Link>
+          </button>
           <button
             onClick={handleSignOut}
             className="w-9 h-9 rounded-full bg-gray-100 dark:bg-zinc-800 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:scale-110 transition-transform"
@@ -169,18 +194,34 @@ export default function ProfileDropdown({ onClose }: Props) {
       <div className="h-px bg-gray-100 dark:bg-zinc-800 mx-4" />
 
       {/* ── 스킨 컬러 ── */}
-      <div className="px-4 py-3.5 relative">
+      <div 
+        className="px-4 py-3.5 relative" 
+        onContextMenu={(e) => e.preventDefault()}
+        onMouseDown={(e) => { if (e.button === 2) e.preventDefault() }}
+        onMouseUp={(e) => { if (e.button === 2) e.preventDefault() }}
+      >
         <p className="text-xs font-medium text-gray-500 dark:text-zinc-400 mb-2.5">스킨 컬러</p>
         <div className="grid grid-cols-4 gap-2 relative">
           {SKIN_COLORS.map((color) => {
             const isPrimaryActive = color.id === accentPrimaryId
             const isTextActive = color.id === accentTextId
+            const isBgActive = color.id === accentBackgroundId
             return (
               <button
                 key={color.id}
                 onClick={(e) => { e.preventDefault(); setAccentPrimary(color.id) }}
                 onContextMenu={(e) => { e.preventDefault(); setAccentText(color.id) }}
-                title={`${color.label} (좌클릭: 색상1, 우클릭: 색상2)`}
+                onMouseDown={(e) => {
+                  if (e.button === 1) e.stopPropagation()
+                }}
+                onAuxClick={(e) => { 
+                  if (e.button === 1) { 
+                    e.preventDefault(); 
+                    e.stopPropagation();
+                    setAccentBackground(color.id) 
+                  } 
+                }}
+                title={`${color.label} (좌:강조1, 우:강조2, 휠:배경)`}
                 className="w-10 h-10 rounded-xl transition-transform hover:scale-110 relative mx-auto"
                 style={{ backgroundColor: color.primary }}
               >
@@ -192,6 +233,9 @@ export default function ProfileDropdown({ onClose }: Props) {
                 {isTextActive && (
                   <span className="absolute -inset-1 rounded-xl ring-1 border border-dashed border-zinc-400 pointer-events-none" />
                 )}
+                {isBgActive && (
+                  <span className="absolute inset-2 border-2 border-white/50 rounded-lg pointer-events-none" />
+                )}
               </button>
             )
           })}
@@ -199,7 +243,7 @@ export default function ProfileDropdown({ onClose }: Props) {
           {/* ★ 끝판왕 커스텀 컬러 버튼 (우리가 통제함) */}
           <div
             className="relative w-10 h-10 rounded-xl overflow-hidden transition-transform hover:scale-110 mx-auto cursor-pointer select-none"
-            title="커스텀 컬러 (좌클릭: 강조색1, 우클릭: 강조색2)"
+            title="커스텀 컬러 (좌:강조1, 우:강조2, 휠:배경)"
             onClick={() => {
               setPickerState({ isOpen: true, target: 'primary' })
             }}
@@ -207,15 +251,28 @@ export default function ProfileDropdown({ onClose }: Props) {
               e.preventDefault()
               setPickerState({ isOpen: true, target: 'text' })
             }}
+            onMouseDown={(e) => {
+              if (e.button === 1) e.stopPropagation()
+            }}
+            onAuxClick={(e) => {
+              if (e.button === 1) {
+                e.preventDefault()
+                e.stopPropagation()
+                setPickerState({ isOpen: true, target: 'bg' })
+              }
+            }}
           >
-            {/* 시각 디스플레이: 좌=강조색1, 우=강조색2 */}
-            <div className="absolute inset-0 flex pointer-events-none">
-              <div className="w-1/2 h-full" style={{ backgroundColor: accentPrimaryId === 'custom' ? localPrimary : '#9ca3af' }} />
-              <div className="w-1/2 h-full" style={{ backgroundColor: accentTextId === 'custom' ? localText : '#6b7280' }} />
+            {/* 시각 디스플레이: 좌=강조색1, 우=강조색2, 하단=배경색 */}
+            <div className="absolute inset-0 flex flex-col pointer-events-none">
+              <div className="flex h-1/2">
+                <div className="w-1/2 h-full" style={{ backgroundColor: accentPrimaryId === 'custom' ? localPrimary : '#9ca3af' }} />
+                <div className="w-1/2 h-full" style={{ backgroundColor: accentTextId === 'custom' ? localText : '#6b7280' }} />
+              </div>
+              <div className="h-1/2 w-full" style={{ backgroundColor: accentBackgroundId === 'custom' ? accentBackground : '#374151' }} />
             </div>
 
             {accentPrimaryId !== 'custom' && accentTextId !== 'custom' && (
-              <span className="absolute inset-0 flex items-center justify-center text-sm font-bold text-white bg-gradient-to-br from-gray-300 to-gray-500 dark:from-zinc-600 dark:to-zinc-800 pointer-events-none">+</span>
+              <span className="absolute inset-0 flex items-center justify-center text-sm font-bold text-gray-900 dark:text-white bg-gradient-to-br from-gray-200 to-gray-400 dark:from-zinc-600 dark:to-zinc-800 pointer-events-none">+</span>
             )}
             {accentPrimaryId === 'custom' && (
               <span className="absolute inset-0 rounded-xl ring-2 ring-offset-2 ring-offset-white dark:ring-offset-zinc-900 pointer-events-none" style={{ '--tw-ring-color': localPrimary } as React.CSSProperties} />
@@ -243,8 +300,17 @@ export default function ProfileDropdown({ onClose }: Props) {
               tabIndex={0} // 키 이벤트를 받기 위해 필요
             >
               <div className="flex justify-between items-center mb-3 px-1">
-                <span className="text-xs font-bold" style={{ color: pickerState.target === 'primary' ? localPrimary : localText }}>
-                  {pickerState.target === 'primary' ? '강조색 1 튜닝 중 🎨' : '강조색 2 튜닝 중 🎨'}
+                <span 
+                  className="text-xs font-bold" 
+                  style={{ 
+                    color: pickerState.target === 'primary' ? localPrimary : 
+                           pickerState.target === 'text' ? localText : 
+                           accentBackground 
+                  }}
+                >
+                  {pickerState.target === 'primary' ? '강조색 1 튜닝 중 🎨' : 
+                   pickerState.target === 'text' ? '강조색 2 튜닝 중 🎨' : 
+                   '강조색 3 튜닝 중 🎨'}
                 </span>
                 <button
                   onClick={handleClosePicker}
@@ -255,14 +321,16 @@ export default function ProfileDropdown({ onClose }: Props) {
               </div>
 
               <HexColorPicker
-                color={pickerState.target === 'primary' ? localPrimary : localText}
+                color={pickerState.target === 'primary' ? localPrimary : pickerState.target === 'text' ? localText : accentBackground}
                 onChange={(newHex) => {
                   if (pickerState.target === 'primary') {
                     setLocalPrimary(newHex)
-                    setAccentPrimary('custom', newHex) // 실시간 미리보기 (저장은 아님)
-                  } else {
+                    setAccentPrimary('custom', newHex)
+                  } else if (pickerState.target === 'text') {
                     setLocalText(newHex)
                     setAccentText('custom', newHex)
+                  } else {
+                    setAccentBackground('custom', newHex)
                   }
                 }}
               />
@@ -281,7 +349,17 @@ export default function ProfileDropdown({ onClose }: Props) {
                   key={i}
                   onClick={() => { setLocalPrimary(hex); setAccentPrimary('custom', hex) }}
                   onContextMenu={(e) => { e.preventDefault(); setLocalText(hex); setAccentText('custom', hex) }}
-                  title={`${hex} (좌클릭: 강조색1, 우클릭: 강조색2)`}
+                  onMouseDown={(e) => {
+                    if (e.button === 1) e.stopPropagation()
+                  }}
+                  onAuxClick={(e) => { 
+                    if (e.button === 1) { 
+                      e.preventDefault(); 
+                      e.stopPropagation();
+                      setAccentBackground('custom', hex) 
+                    } 
+                  }}
+                  title={`${hex} (좌:강조1, 우:강조2, 휠:배경)`}
                   className="w-full aspect-square rounded-lg border-2 border-white dark:border-zinc-800 shadow-sm hover:scale-125 transition-transform"
                   style={{ backgroundColor: hex }}
                 />
@@ -290,14 +368,18 @@ export default function ProfileDropdown({ onClose }: Props) {
           </div>
         )}
 
-        <div className="mt-3 flex items-center justify-between px-2 bg-black/5 dark:bg-white/5 py-1.5 rounded-lg">
-          <div className="flex items-center gap-1.5">
+        <div className="mt-3 grid grid-cols-3 gap-1 px-2 bg-black/5 dark:bg-white/5 py-1.5 rounded-lg">
+          <div className="flex flex-col items-center gap-1">
             <span className="w-3 h-3 rounded-full shadow-sm" style={{ backgroundColor: accentPrimary }} />
-            <span className="text-[10px] text-zinc-600 dark:text-zinc-400 font-medium">강조색 1(좌)</span>
+            <span className="text-[8px] font-black" style={{ color: accentPrimary }}>강조색 1(좌)</span>
           </div>
-          <div className="flex items-center gap-1.5">
-            <span className="text-[10px] text-zinc-600 dark:text-zinc-400 font-medium">강조색 2(우)</span>
+          <div className="flex flex-col items-center gap-1">
+            <span className="w-3 h-3 rounded-full shadow-sm border border-zinc-400" style={{ backgroundColor: accentBackground }} />
+            <span className="text-[8px] font-black" style={{ color: accentBackground }}>강조색 3(휠)</span>
+          </div>
+          <div className="flex flex-col items-center gap-1">
             <span className="w-3 h-3 rounded-full shadow-sm" style={{ backgroundColor: accentText }} />
+            <span className="text-[8px] font-black" style={{ color: accentText }}>강조색 2(우)</span>
           </div>
         </div>
       </div>
@@ -306,21 +388,70 @@ export default function ProfileDropdown({ onClose }: Props) {
 
       {/* ── 월드컵 활동 ── */}
       <div className="px-4 py-3.5">
-        <div className="flex items-center justify-between bg-gray-50 dark:bg-zinc-800/60 rounded-xl px-3.5 py-3">
-          <div>
-            <p className="text-xs font-medium text-gray-500 dark:text-zinc-400">
-              {isCreator ? '생성 · 관리 · 통계' : '나만의 이상형 월드컵을 만들어보세요'}
-            </p>
+        {isCreator ? (
+          <div className="flex flex-col gap-1 w-full bg-gray-50 dark:bg-zinc-800/40 p-1.5 rounded-2xl border border-black/5 dark:border-white/5">
+            <Link
+              href="/dashboard"
+              onClick={onClose}
+              className="flex items-center justify-between px-3 py-2.5 rounded-xl hover:bg-white dark:hover:bg-zinc-800 transition-all group shadow-sm hover:shadow-md border border-transparent hover:border-black/5 dark:hover:border-white/5"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center text-violet-600">
+                  <Settings className="w-4 h-4" />
+                </div>
+                <span className="text-sm font-bold text-gray-700 dark:text-zinc-300 group-hover:text-violet-600 transition-colors">월드컵 관리</span>
+              </div>
+              <div className="text-[9px] font-black bg-violet-600/10 text-violet-600 px-2 py-0.5 rounded-full uppercase tracking-tighter">MANAGE</div>
+            </Link>
+            
+            <Link
+              href="/create"
+              onClick={onClose}
+              className="flex items-center justify-between px-3 py-2.5 rounded-xl hover:bg-white dark:hover:bg-zinc-800 transition-all group shadow-sm hover:shadow-md border border-transparent hover:border-black/5 dark:hover:border-white/5"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center text-emerald-600">
+                  <Plus className="w-4 h-4" />
+                </div>
+                <span className="text-sm font-bold text-gray-700 dark:text-zinc-300 group-hover:text-emerald-600 transition-colors">새 월드컵 만들기</span>
+              </div>
+              <div className="text-[9px] font-black bg-emerald-600/10 text-emerald-600 px-2 py-0.5 rounded-full uppercase tracking-tighter">NEW</div>
+            </Link>
+
+            <Link
+              href="/dashboard" // 임시로 대시보드로 보내되, 나중에 정산 페이지 생기면 변경 가능
+              onClick={() => {
+                alert('정산 및 수익 통계 페이지로 이동합니다. (준비 중)')
+                onClose()
+              }}
+              className="flex items-center justify-between px-3 py-2.5 rounded-xl hover:bg-white dark:hover:bg-zinc-800 transition-all group shadow-sm hover:shadow-md border border-transparent hover:border-black/5 dark:hover:border-white/5"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center text-orange-600">
+                  <Zap className="w-4 h-4" />
+                </div>
+                <span className="text-sm font-bold text-gray-700 dark:text-zinc-300 group-hover:text-orange-600 transition-colors">수익 및 정산</span>
+              </div>
+              <div className="text-[9px] font-black bg-orange-600/10 text-orange-600 px-2 py-0.5 rounded-full uppercase tracking-tighter">PAYOUT</div>
+            </Link>
           </div>
-          <Link
-            href={isCreator ? '/dashboard' : '/create'}
-            onClick={onClose}
-            className="ml-2 shrink-0 text-xs font-semibold px-3 py-1.5 rounded-lg text-white transition-opacity hover:opacity-90 btn-hover"
-            style={{ backgroundColor: accentPrimary }}
-          >
-            {isCreator ? '이동' : '시작'}
-          </Link>
-        </div>
+        ) : (
+          <div className="flex items-center justify-between bg-gray-50 dark:bg-zinc-800/60 rounded-xl px-3.5 py-3">
+            <div className="flex-1">
+              <p className="text-[11px] font-bold text-gray-500 dark:text-zinc-400 leading-tight">
+                나만의 이상형 월드컵을<br />생성하고 수익을 창출하세요
+              </p>
+            </div>
+            <Link
+              href="/create"
+              onClick={onClose}
+              className="ml-3 shrink-0 text-xs font-black px-5 py-2.5 rounded-xl text-white transition-all hover:scale-105 active:scale-95 shadow-lg shadow-[var(--accent-1)]/20"
+              style={{ backgroundColor: accentPrimary }}
+            >
+              지금 시작
+            </Link>
+          </div>
+        )}
       </div>
 
       <div className="h-px bg-gray-100 dark:bg-zinc-800 mx-4" />

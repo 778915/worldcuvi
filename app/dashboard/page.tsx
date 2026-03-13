@@ -38,7 +38,7 @@ export default function CreatorDashboard() {
 
       // Fetch Profile
       const { data: profileData } = await supabase
-        .from('profiles')
+        .from('users')
         .select('*')
         .eq('id', user.id)
         .single()
@@ -108,7 +108,7 @@ export default function CreatorDashboard() {
           </div>
           <Link 
             href="/create"
-            className="hidden md:flex items-center gap-2 px-6 py-3 bg-violet-600 text-white rounded-xl font-black text-sm shadow-xl shadow-violet-600/20 hover:scale-105 active:scale-95 transition-all"
+            className="hidden md:flex items-center gap-2 px-6 py-3 bg-violet-600 text-white rounded-xl font-black text-sm shadow-xl shadow-violet-600/20 btn-hover transition-all"
           >
             <Plus className="w-4 h-4" />
             새 월드컵 제작
@@ -128,7 +128,7 @@ export default function CreatorDashboard() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.1 }}
-              className="bg-white dark:bg-zinc-900 p-6 rounded-3xl border border-black/5 dark:border-white/5 shadow-sm"
+              className="bg-white dark:bg-zinc-900 p-6 rounded-3xl border border-black/5 dark:border-white/5 shadow-sm card-hover"
             >
               <div className="flex items-center justify-between mb-4">
                 <div className={`w-10 h-10 rounded-xl bg-gray-50 dark:bg-black flex items-center justify-center ${stat.color}`}>
@@ -161,7 +161,7 @@ export default function CreatorDashboard() {
                 initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: 0.2 + (i * 0.05) }}
-                className="group bg-white dark:bg-zinc-900 p-4 rounded-3xl border border-black/5 dark:border-white/5 flex items-center gap-6 hover:border-violet-600/30 transition-all shadow-sm"
+                className="group bg-white dark:bg-zinc-900 p-4 rounded-3xl border border-black/5 dark:border-white/5 flex items-center gap-6 hover:border-violet-600/30 transition-all shadow-sm card-hover"
               >
                 <div className="w-32 aspect-video rounded-2xl overflow-hidden bg-zinc-100 shrink-0">
                   <img src={wc.thumbnail_url} alt={wc.title} className="w-full h-full object-cover transition-transform group-hover:scale-110" />
@@ -182,7 +182,7 @@ export default function CreatorDashboard() {
                   >
                     <ExternalLink className="w-5 h-5" />
                   </Link>
-                  <button className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-zinc-900 dark:bg-white text-white dark:text-black font-black text-sm hover:scale-105 active:scale-95 transition-all shadow-lg shadow-zinc-500/10">
+                  <button className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-zinc-900 dark:bg-white text-white dark:text-black font-black text-sm btn-hover transition-all shadow-lg shadow-zinc-500/10">
                     <Settings className="w-4 h-4" />
                     수정
                   </button>

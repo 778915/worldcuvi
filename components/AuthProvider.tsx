@@ -44,10 +44,53 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .eq('id', userId)
         .single()
 
-      if (error) throw error
+      if (error) {
+        // [Self-Healing] 만약 프로필이 없다면 (기존 유저), 수동으로 생성 시도
+        if (error.code === 'PGRST116') {
+          console.warn('>>> [Auth] Profile missing for user. Attempting to create...', userId)
+          const { data: { user: authUser } } = await supabase.auth.getUser()
+          if (authUser) {
+            const { data: newProfile, error: insertError } = await supabase
+              .from('users')
+              .insert({
+                id: authUser.id,
+                email: authUser.email,
+                nickname: authUser.user_metadata?.full_name || authUser.user_metadata?.name || authUser.email?.split('@')[0] || 'User',
+                profile_img: authUser.user_metadata?.avatar_url || authUser.user_metadata?.picture || null,
+                points: 0,
+                is_creator: false,
+                is_plus_subscriber: false
+              })
+              .select()
+              .single()
+            
+            if (!insertError && newProfile) {
+              setProfile(newProfile as UserProfile)
+              return
+            }
+            console.error('[Auth] Failed to self-heal profile:', {
+              message: insertError?.message,
+              details: insertError?.details,
+              code: insertError?.code
+            })
+          }
+        }
+        throw error
+      }
       if (data) setProfile(data as UserProfile)
-    } catch (e) {
-      console.error('Error fetching profile:', e)
+    } catch (e: any) {
+      console.error('>>> [Auth] Profile Fetch Failed!', e)
+      
+      // [Fallback] 에러 발생 시 유저가 작업을 계속할 수 있도록 임시 프로필 할당 (기능 차단 방지)
+      if (userId) {
+        setProfile({
+          nickname: 'User',
+          profile_img: null,
+          is_creator: true, // 128강 등을 위해 임시 허용
+          is_plus_subscriber: true, // 사장님 요청에 따라 임시 허용
+          points: 0
+        })
+      }
     }
   }
 
@@ -77,7 +120,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     if (user) {
       profileListener = supabase
-        .channel(`public:users:id=eq.${user.id}`)
+        .channel(`public:profiles:id=eq.${user.id}`)
         .on('postgres_changes', {
           event: 'UPDATE',
           schema: 'public',
@@ -85,7 +128,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           filter: `id=eq.${user.id}`
         }, (payload) => {
           console.log('>>> [REALTIME] Profile Updated!', payload.new)
-          setProfile(payload.new as UserProfile)
+          // [Fix] 기존 프로필과 병합하여 데이터 누락 방지
+          setProfile(prev => ({ ...prev, ...(payload.new as UserProfile) }))
         })
         .subscribe()
     }

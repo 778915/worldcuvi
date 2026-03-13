@@ -69,7 +69,10 @@ export default function LoginModal() {
 
         {/* 로고 */}
         <div className="flex flex-col items-center gap-2">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-violet-500/30">
+          <div 
+            className="w-10 h-10 rounded-xl flex items-center justify-center shadow-lg pointer-events-none"
+            style={{ background: `linear-gradient(135deg, var(--accent-1), color-mix(in srgb, var(--accent-1) 80%, black))` }}
+          >
             <Trophy className="w-5 h-5 text-white" />
           </div>
           <p className="text-zinc-400 text-xs tracking-widest uppercase">환영합니다</p>

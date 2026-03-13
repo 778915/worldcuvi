@@ -2,26 +2,28 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  height: 18px;
   border-radius: 50%;
-  background: linear-gradient(to right, #bf953f, #fcf6ba, #b38728, #fbf5b7, #aa771c);
+  background: linear-gradient(135deg, #bf953f, #fcf6ba, #b38728, #fbf5b7, #aa771c);
   background-size: 200% auto;
   cursor: pointer;
   position: relative;
-  transition: background-position 0.5s ease;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  transition: all 0.5s ease;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2), inset 0 0 10px rgba(255, 255, 255, 0.4);
   flex-shrink: 0;
+  border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
 .premium-badge:hover {
   background-position: right center;
+  transform: scale(1.1);
+  box-shadow: 0 0 20px rgba(191, 149, 63, 0.5);
 }
 
 .premium-badge .crown-icon {
-  fill: rgb(121, 103, 3);
-  width: 10px;
-  height: 10px;
+  fill: #4b3200;
+  width: 60%;
+  height: 60%;
+  filter: drop-shadow(0 1px 1px rgba(255, 255, 255, 0.5));
 }
 
 .premium-tooltip {

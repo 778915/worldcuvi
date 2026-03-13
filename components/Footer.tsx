@@ -18,7 +18,7 @@ export default function Footer() {
             }}
           >
             <span className="text-gray-900 dark:text-white">World</span>
-            <span style={{ color: 'var(--accent-primary)' }}>Cuvi</span>
+            <span style={{ color: 'var(--accent-1)' }}>Cuvi</span>
           </Link>
           <p className="text-sm text-zinc-500 dark:text-zinc-400">
             나만의 이상형 월드컵을 만들고 공유하세요.

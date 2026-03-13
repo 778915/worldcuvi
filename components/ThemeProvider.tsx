@@ -21,55 +21,81 @@ const KEYS = {
   P_HEX: 'worldcuvi-skin-primary-hex',
   T_ID: 'worldcuvi-skin-text-id',
   T_HEX: 'worldcuvi-skin-text-hex',
+  B_ID: 'worldcuvi-skin-bg-id',
+  B_HEX: 'worldcuvi-skin-bg-hex',
 }
 
 interface ThemeColorContextType {
   accentPrimaryId: SkinColorId
   accentTextId: SkinColorId
+  accentBackgroundId: SkinColorId
   accentPrimary: string
   accentText: string
+  accentBackground: string
   setAccentPrimary: (id: SkinColorId, customHex?: string) => void
   setAccentText: (id: SkinColorId, customHex?: string) => void
-  applyGroupTheme: (primary: string, secondary: string) => void // AI 테마 적용 기능 추가
+  setAccentBackground: (id: SkinColorId, customHex?: string) => void
+  applyGroupTheme: (primary: string, secondary: string) => void
 }
 
 const ThemeColorContext = createContext<ThemeColorContextType>({
   accentPrimaryId: 'purple',
   accentTextId: 'purple',
+  accentBackgroundId: 'purple',
   accentPrimary: '#a855f7',
   accentText: '#9333ea',
+  accentBackground: '#ffffff',
   setAccentPrimary: () => { },
   setAccentText: () => { },
+  setAccentBackground: () => { },
   applyGroupTheme: () => { },
 })
 
 export const useAccent = () => useContext(ThemeColorContext)
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [mounted, setMounted] = useState(false) // 하이드레이션 방지
+  const [mounted, setMounted] = useState(false)
   const [accentPrimaryId, setAccentPrimaryId] = useState<SkinColorId>('purple')
   const [accentPrimary, setAccentPrimary] = useState('#a855f7')
   const [accentTextId, setAccentTextId] = useState<SkinColorId>('purple')
   const [accentText, setAccentText] = useState('#9333ea')
+  const [accentBackgroundId, setAccentBackgroundId] = useState<SkinColorId>('custom')
+  const [accentBackground, setAccentBackground] = useState('#000000')
 
-  // CSS 변수 주입 함수
-  const updateRootStyles = useCallback((primary: string, text: string) => {
+  const updateRootStyles = useCallback((primary: string, text: string, bg: string) => {
+    if (typeof document === 'undefined') return
     const root = document.documentElement.style
     root.setProperty('--accent-primary', primary)
     root.setProperty('--accent-1', primary)
     root.setProperty('--accent-text', text)
     root.setProperty('--accent-2', text)
+    root.setProperty('--accent-3', bg)
+    
+    // Only set --background if it's not the default white (to allow CSS variables to work)
+    if (bg !== '#ffffff') {
+      root.setProperty('--background', bg)
+    } else {
+      root.removeProperty('--background') // Clear inline override to let .dark class work
+      // No need to clear other properties as they are re-set below
+      root.setProperty('--accent-primary', primary)
+      root.setProperty('--accent-1', primary)
+      root.setProperty('--accent-text', text)
+      root.setProperty('--accent-2', text)
+      root.setProperty('--accent-3', bg)
+    }
   }, [])
 
-  // 1. 초기 로드
   useEffect(() => {
     const savedPId = localStorage.getItem(KEYS.P_ID) as SkinColorId | null
     const savedPHex = localStorage.getItem(KEYS.P_HEX)
     const savedTId = localStorage.getItem(KEYS.T_ID) as SkinColorId | null
     const savedTHex = localStorage.getItem(KEYS.T_HEX)
+    const savedBId = localStorage.getItem(KEYS.B_ID) as SkinColorId | null
+    const savedBHex = localStorage.getItem(KEYS.B_HEX)
 
     let p = '#a855f7'
     let t = '#9333ea'
+    let b = '#ffffff'
 
     if (savedPId === 'custom' && savedPHex) {
       setAccentPrimaryId('custom'); p = savedPHex
@@ -85,9 +111,17 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       if (found) { setAccentTextId(found.id); t = found.text }
     }
 
+    if (savedBId === 'custom' && savedBHex) {
+      setAccentBackgroundId('custom'); b = savedBHex
+    } else if (savedBId) {
+      const found = SKIN_COLORS.find(c => c.id === savedBId)
+      if (found) { setAccentBackgroundId(found.id); b = found.primary }
+    }
+
     setAccentPrimary(p)
     setAccentText(t)
-    updateRootStyles(p, t)
+    setAccentBackground(b)
+    updateRootStyles(p, t, b)
     setMounted(true)
   }, [updateRootStyles])
 
@@ -100,7 +134,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     setAccentPrimary(targetHex)
     localStorage.setItem(KEYS.P_ID, id)
     if (id === 'custom') localStorage.setItem(KEYS.P_HEX, targetHex)
-    updateRootStyles(targetHex, accentText)
+    updateRootStyles(targetHex, accentText, accentBackground)
   }
 
   const handleSetAccentText = (id: SkinColorId, hex?: string) => {
@@ -112,30 +146,39 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     setAccentText(targetHex)
     localStorage.setItem(KEYS.T_ID, id)
     if (id === 'custom') localStorage.setItem(KEYS.T_HEX, targetHex)
-    updateRootStyles(accentPrimary, targetHex)
+    updateRootStyles(accentPrimary, targetHex, accentBackground)
   }
 
-  // AI 검색 등으로 아티스트 테마를 즉시 적용하는 마법
+  const handleSetAccentBackground = (id: SkinColorId, hex?: string) => {
+    let targetHex = hex || accentBackground
+    if (id !== 'custom') {
+      targetHex = SKIN_COLORS.find(c => c.id === id)?.primary || '#ffffff'
+    }
+    setAccentBackgroundId(id)
+    setAccentBackground(targetHex)
+    localStorage.setItem(KEYS.B_ID, id)
+    if (id === 'custom') localStorage.setItem(KEYS.B_HEX, targetHex)
+    updateRootStyles(accentPrimary, accentText, targetHex)
+  }
+
   const applyGroupTheme = (primary: string, secondary: string) => {
     setAccentPrimaryId('custom')
     setAccentPrimary(primary)
     setAccentTextId('custom')
     setAccentText(secondary)
-    updateRootStyles(primary, secondary)
-    // 저장까지 원하시면 아래 주석 해제
-    // localStorage.setItem(KEYS.P_ID, 'custom'); localStorage.setItem(KEYS.P_HEX, primary);
+    updateRootStyles(primary, secondary, accentBackground)
   }
 
   return (
     <ThemeColorContext.Provider value={{
-      accentPrimaryId, accentTextId,
-      accentPrimary, accentText,
+      accentPrimaryId, accentTextId, accentBackgroundId,
+      accentPrimary, accentText, accentBackground,
       setAccentPrimary: handleSetAccentPrimary,
       setAccentText: handleSetAccentText,
+      setAccentBackground: handleSetAccentBackground,
       applyGroupTheme
     }}>
       <NextThemesProvider attribute="class" defaultTheme="dark" enableSystem={false}>
-        {/* 하이드레이션 이전 깜빡임 방지 */}
         <div style={{ visibility: mounted ? 'visible' : 'hidden' }}>
           {children}
         </div>

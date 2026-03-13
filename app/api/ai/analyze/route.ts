@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
     let isPlus = false
     if (authUser) {
       const { data: profile } = await supabase
-        .from('profiles')
+        .from('users')
         .select('is_plus_subscriber')
         .eq('id', authUser.id)
         .single()
@@ -72,7 +72,7 @@ export async function POST(req: NextRequest) {
 반드시 다음 JSON 규격을 엄격히 지켜 응답하십시오 (필드명 변경 금지):
 
 {
-  "determined_genre": "장르 이름 (예: 버츄얼 아이돌 커버곡)",
+  "determined_genre": "반드시 다음 중 하나 선택: ['애니메이션', '스포츠', '게임', '연예인/인플루언서', '음식', '음악', '동물/힐링', '영화/드라마', '명언/망언', '기타']",
   "sub_tags": ["#태그1", "#태그2"],
   "identity": "이 월드컵의 한 줄 정의",
   "public_reaction": "대중 및 팬들의 예상 반응 분석",
@@ -81,7 +81,9 @@ export async function POST(req: NextRequest) {
   "is_vs_mode": true,
   "confidence_score": 95,
   "recommended_titles": ["추천 제목 1", "추천 제목 2"]
-}`
+}
+
+[중요] determined_genre에는 반드시 지정된 리스트의 문자열만 넣으세요. 설명이나 다른 말을 덧붙이지 마십시오.`
     const prompt = `당신은 토너먼트 형식의 '월드컵' 기획자입니다. 
 분석 대상 데이터:
 제목: ${title}

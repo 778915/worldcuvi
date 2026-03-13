@@ -17,6 +17,10 @@ interface UIContextType {
   boosterModalOpen: boolean
   openBoosterModal: () => void
   closeBoosterModal: () => void
+  settingsModalOpen: boolean
+  settingsModalPos: { x: number; y: number } | null
+  openSettingsModal: (pos?: { x: number; y: number }) => void
+  closeSettingsModal: () => void
 }
 
 const UIContext = createContext<UIContextType>({
@@ -34,6 +38,10 @@ const UIContext = createContext<UIContextType>({
   boosterModalOpen: false,
   openBoosterModal: () => {},
   closeBoosterModal: () => {},
+  settingsModalOpen: false,
+  settingsModalPos: null,
+  openSettingsModal: () => {},
+  closeSettingsModal: () => {},
 })
 
 export function UIProvider({ children }: { children: ReactNode }) {
@@ -44,6 +52,8 @@ export function UIProvider({ children }: { children: ReactNode }) {
   const [searchDockPlaceholder, setSearchDockPlaceholder] = useState('')
   const [searchDockPos, setSearchDockPos] = useState<{ x: number; y: number } | null>(null)
   const [boosterModalOpen, setBoosterModalOpen] = useState(false)
+  const [settingsModalOpen, setSettingsModalOpen] = useState(false)
+  const [settingsModalPos, setSettingsModalPos] = useState<{ x: number; y: number } | null>(null)
 
   return (
     <UIContext.Provider
@@ -73,6 +83,16 @@ export function UIProvider({ children }: { children: ReactNode }) {
         boosterModalOpen,
         openBoosterModal: () => setBoosterModalOpen(true),
         closeBoosterModal: () => setBoosterModalOpen(false),
+        settingsModalOpen,
+        settingsModalPos,
+        openSettingsModal: (pos?: { x: number; y: number }) => {
+          if (pos) setSettingsModalPos(pos)
+          setSettingsModalOpen(true)
+        },
+        closeSettingsModal: () => {
+          setSettingsModalOpen(false)
+          setSettingsModalPos(null)
+        },
       }}
     >
       {children}
