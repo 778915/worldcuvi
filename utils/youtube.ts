@@ -148,14 +148,11 @@ export async function searchYouTube(
   }
 }
 
-export async function fetchChannelUploads(channelId: string, maxResults: number = 50): Promise<YouTubeMetadata[]> {
-  if (!YOUTUBE_API_KEY || !channelId) return []
+export async function fetchPlaylistItems(playlistId: string, maxResults: number = 50): Promise<YouTubeMetadata[]> {
+  if (!YOUTUBE_API_KEY || !playlistId) return []
 
   try {
-    // UU Trick: UC로 시작하는 채널 ID를 UU로 바꾸면 업로드 플레이리스트 ID가 됨
-    const uploadsPlaylistId = channelId.replace(/^UC/, 'UU')
-    const url = `https://www.googleapis.com/youtube/v3/playlistItems?playlistId=${uploadsPlaylistId}&part=snippet&maxResults=${maxResults}&key=${YOUTUBE_API_KEY}`
-    
+    const url = `https://www.googleapis.com/youtube/v3/playlistItems?playlistId=${playlistId}&part=snippet&maxResults=${maxResults}&key=${YOUTUBE_API_KEY}`
     const res = await fetch(url)
     const data = await res.json()
 
@@ -165,14 +162,14 @@ export async function fetchChannelUploads(channelId: string, maxResults: number 
       videoId: item.snippet.resourceId.videoId,
       title: item.snippet.title,
       description: item.snippet.description,
-      thumbnail: item.snippet.thumbnails?.high?.url || item.snippet.thumbnails?.default?.url,
+      thumbnail: item.snippet.thumbnails?.maxres?.url || item.snippet.thumbnails?.high?.url || item.snippet.thumbnails?.default?.url,
       tags: [],
       videoCategoryId: '',
       topicDetails: {},
       publishedAt: item.snippet.publishedAt,
       channelId: item.snippet.channelId,
       channelTitle: item.snippet.channelTitle,
-      isOfficial: false // 업로드 목록에서는 기본적으로 알 수 없으나, 채널 스캔이므로 공식 채널에서 왔을 확률이 높음
+      isOfficial: false
     }))
   } catch (error) {
     console.error('YouTube Playlist API Error:', error)
@@ -180,8 +177,23 @@ export async function fetchChannelUploads(channelId: string, maxResults: number 
   }
 }
 
+export async function fetchChannelUploads(channelId: string, maxResults: number = 50): Promise<YouTubeMetadata[]> {
+  if (!YOUTUBE_API_KEY || !channelId) return []
+  // UU Trick: UC로 시작하는 채널 ID를 UU로 바꾸면 업로드 플레이리스트 ID가 됨
+  const uploadsPlaylistId = channelId.replace(/^UC/, 'UU')
+  return fetchPlaylistItems(uploadsPlaylistId, maxResults)
+}
+
 export function extractVideoId(url: string): string | null {
-  const regex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/
+  if (!url) return null
+  const regex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/|youtube\.com\/shorts\/)([^"&?\/\s]{11})/
+  const match = url.match(regex)
+  return match ? match[1] : null
+}
+
+export function extractPlaylistId(url: string): string | null {
+  if (!url) return null
+  const regex = /[?&]list=([^#&?]+)/
   const match = url.match(regex)
   return match ? match[1] : null
 }

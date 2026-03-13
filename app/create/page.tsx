@@ -26,7 +26,7 @@ import {
   Play,
   Share2
 } from 'lucide-react'
-import { extractVideoId } from '@/utils/youtube'
+import { extractVideoId, extractPlaylistId } from '@/utils/youtube'
 import { useAuth } from '@/components/AuthProvider'
 import { useAccent } from '@/components/ThemeProvider'
 import PlusUserBadge from '@/components/PlusUserBadge'
@@ -99,6 +99,14 @@ export default function WorldcupCreatePage() {
   const [searchOrder, setSearchOrder] = useState<'relevance' | 'viewCount' | 'date'>('relevance')
   const [searchMode, setSearchMode] = useState<'seed' | 'candidate'>('seed')
   
+  const [searchError, setSearchError] = useState<string | null>(null)
+
+  // Playlist States
+  const [playlistItems, setPlaylistItems] = useState<WorldcupItem[]>([])
+  const [showPlaylistModal, setShowPlaylistModal] = useState(false)
+  const [selectedPlaylistItems, setSelectedPlaylistItems] = useState<string[]>([])
+  const [isFetchingPlaylist, setIsFetchingPlaylist] = useState(false)
+
   // Magic Scan States
   const [contextMenu, setContextMenu] = useState<{ x: number, y: number, video: WorldcupItem } | null>(null)
   const [magicScanResults, setMagicScanResults] = useState<WorldcupItem[]>([])
@@ -109,7 +117,6 @@ export default function WorldcupCreatePage() {
   const [detectedGroup, setDetectedGroup] = useState<string | null>(null)
   const [detectedSong, setDetectedSong] = useState<string | null>(null)
   const [themeColors, setThemeColors] = useState({ primary: '#ef4444', secondary: '#ef4444' })
-  const [searchError, setSearchError] = useState<string | null>(null)
 
   // AI 분석 브리핑 텍스트 루프
   useEffect(() => {
@@ -131,8 +138,19 @@ export default function WorldcupCreatePage() {
 
   const handleStartAnalysis = async (e?: React.FormEvent, overrideVideoId?: string, overrideThumbnail?: string, overrideTitle?: string) => {
     e?.preventDefault()
+    
+    // 재생목록 감지
+    const playlistId = extractPlaylistId(seedUrl)
+    if (playlistId && !overrideVideoId) {
+      handlePlaylistFetch(playlistId)
+      return
+    }
+
     const targetVideoId = overrideVideoId || extractVideoId(seedUrl)
-    if (!targetVideoId) return
+    if (!targetVideoId) {
+      alert('올바른 유튜브 영상 또는 재생목록 주소를 입력해주세요.')
+      return
+    }
 
     setIsAnalyzing(true)
     setAnalysisProgress(10)
@@ -178,7 +196,7 @@ export default function WorldcupCreatePage() {
         id: Date.now().toString(), 
         title: overrideTitle || data.recommended_title || title, 
         team: data.is_vs_mode ? 'A' : 'Neutral', 
-        thumbnail: overrideThumbnail || data.thumbnail || 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=800', 
+        thumbnail: overrideThumbnail || data.thumbnail || `https://img.youtube.com/vi/${targetVideoId}/maxresdefault.jpg`, 
         videoId: targetVideoId
       }
       setItems([seedItem])
@@ -205,6 +223,42 @@ export default function WorldcupCreatePage() {
     } finally {
       setIsAnalyzing(false)
     }
+  }
+
+  const handlePlaylistFetch = async (playlistId: string) => {
+    setIsFetchingPlaylist(true)
+    try {
+      const res = await fetch(`/api/youtube/playlist?playlistId=${playlistId}`)
+      const data = await res.json()
+      if (data.error) throw new Error(data.error)
+      
+      const formatted = data.map((v: any) => ({
+        ...v,
+        id: `${Date.now()}-${Math.random()}`,
+        team: 'Neutral'
+      }))
+      setPlaylistItems(formatted)
+      setSelectedPlaylistItems(formatted.map((v: any) => v.videoId)) // 기본 전체 선택
+      setShowPlaylistModal(true)
+    } catch (err) {
+      console.error(err)
+      alert('재생목록을 가져오는 중 오류가 발생했습니다.')
+    } finally {
+      setIsFetchingPlaylist(false)
+    }
+  }
+
+  const addSelectedPlaylistItems = () => {
+    const selected = playlistItems.filter(v => selectedPlaylistItems.includes(v.videoId || ''))
+    if (selected.length === 0) return
+
+    // 첫 영상을 씨드로 분석 시작
+    const first = selected[0]
+    setItems(selected.map(s => ({ ...s, id: `${Date.now()}-${Math.random()}` })))
+    setShowPlaylistModal(false)
+    
+    // 분석 엔진 돌리기 (첫 영상 기준)
+    handleStartAnalysis(undefined, first.videoId, first.thumbnail, first.title)
   }
 
   const trackAction = async (channelId: string, channelTitle: string, action: 'add' | 'remove' | 'finalize') => {
@@ -426,7 +480,7 @@ export default function WorldcupCreatePage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-black text-foreground pb-24">
+    <div className="min-h-screen bg-[#fafafa] dark:bg-[#09090b] text-foreground pb-24">
       {/* ProgressBar (Step 2) */}
       <AnimatePresence>
         {step === 2 && (
@@ -504,7 +558,7 @@ export default function WorldcupCreatePage() {
           <motion.div 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="max-w-2xl mx-auto bg-white dark:bg-zinc-900 rounded-[2.5rem] border border-black/5 dark:border-white/5 p-10 shadow-2xl"
+            className="max-w-2xl mx-auto bg-white dark:bg-[#121214] rounded-[2.5rem] border border-zinc-200 dark:border-zinc-800/50 p-10 shadow-xl dark:shadow-2xl dark:shadow-black/50"
           >
             <form onSubmit={(e) => { e.preventDefault(); handleStartAnalysis(); }} className="space-y-8">
               <div className="space-y-3">
@@ -942,7 +996,8 @@ export default function WorldcupCreatePage() {
                 className="px-16 py-6 rounded-[2rem] bg-violet-600 text-white font-black text-2xl shadow-2xl shadow-violet-600/40 hover:scale-105 active:scale-95 transition-all flex items-center gap-4 disabled:opacity-30 disabled:hover:scale-100 disabled:cursor-not-allowed group"
               >
                 <Trophy className="w-8 h-8 fill-current group-hover:rotate-12 transition-transform" />
-                </button>
+                월드컵 생성하기
+              </button>
               </div>
             </div>
           )}
@@ -957,13 +1012,13 @@ export default function WorldcupCreatePage() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setShowSearchModal(false)}
-              className="absolute inset-0 bg-black/80 backdrop-blur-xl"
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm dark:bg-black/80"
             />
             <motion.div 
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              className="relative w-full max-w-4xl bg-white dark:bg-zinc-900 rounded-[3rem] shadow-2xl overflow-hidden border border-black/5 dark:border-white/5"
+              className="relative w-full max-w-4xl bg-white dark:bg-zinc-950 rounded-[3rem] shadow-2xl overflow-hidden border border-zinc-200 dark:border-zinc-800"
             >
               <div className="p-10">
                 <div className="flex items-center justify-between mb-8">
@@ -1310,6 +1365,99 @@ export default function WorldcupCreatePage() {
                 </motion.div>
               )}
             </AnimatePresence>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Playlist Selector Modal */}
+      <AnimatePresence>
+        {showPlaylistModal && (
+          <div className="fixed inset-0 z-[250] flex items-center justify-center p-6">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowPlaylistModal(false)}
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm dark:bg-black/80"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-5xl bg-white dark:bg-[#121214] rounded-[3rem] shadow-2xl overflow-hidden border border-zinc-200 dark:border-zinc-800 max-h-[90vh] flex flex-col"
+            >
+              <div className="p-10 border-b border-zinc-100 dark:border-zinc-800 flex items-center justify-between shrink-0">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-2xl bg-violet-600 flex items-center justify-center text-white">
+                    <ListVideo className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h3 className="text-2xl font-black italic">Playlist Detected</h3>
+                    <p className="text-sm font-bold text-zinc-400">{playlistItems.length}개의 영상을 발견했습니다.</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <button 
+                    onClick={() => {
+                      if (selectedPlaylistItems.length === playlistItems.length) setSelectedPlaylistItems([])
+                      else setSelectedPlaylistItems(playlistItems.map(v => v.videoId || ''))
+                    }}
+                    className="px-4 py-2 rounded-xl text-sm font-bold text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all"
+                  >
+                    {selectedPlaylistItems.length === playlistItems.length ? '전체 해제' : '전체 선택'}
+                  </button>
+                  <button 
+                    onClick={() => setShowPlaylistModal(false)}
+                    className="w-10 h-10 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center justify-center transition-colors"
+                  >
+                    <X className="w-5 h-5 text-zinc-400" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-10 grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6 custom-scrollbar">
+                {playlistItems.map((v) => (
+                  <motion.div 
+                    key={v.id}
+                    onClick={() => {
+                      setSelectedPlaylistItems(prev => 
+                        prev.includes(v.videoId || '') 
+                          ? prev.filter(id => id !== v.videoId) 
+                          : [...prev, v.videoId || '']
+                      )
+                    }}
+                    className={`group cursor-pointer relative rounded-2xl overflow-hidden border-2 transition-all ${
+                      selectedPlaylistItems.includes(v.videoId || '') 
+                        ? 'border-violet-600 ring-4 ring-violet-500/20 scale-95 shadow-xl' 
+                        : 'border-zinc-100 dark:border-zinc-800 hover:border-violet-300'
+                    }`}
+                  >
+                    <div className="aspect-video relative overflow-hidden bg-zinc-200 dark:bg-zinc-800">
+                      <img src={v.thumbnail} className="w-full h-full object-cover" alt="thumb" />
+                    </div>
+                    <div className="p-3 bg-white dark:bg-zinc-900 border-t border-zinc-100 dark:border-zinc-800">
+                      <p className="text-[10px] font-black line-clamp-2 leading-tight h-8">{v.title}</p>
+                    </div>
+                    {selectedPlaylistItems.includes(v.videoId || '') && (
+                      <div className="absolute top-2 right-2 w-6 h-6 rounded-full bg-violet-600 text-white flex items-center justify-center shadow-lg">
+                        <CheckCircle2 className="w-4 h-4" />
+                      </div>
+                    )}
+                  </motion.div>
+                ))}
+              </div>
+
+              <div className="p-8 bg-zinc-50 dark:bg-zinc-900/50 border-t border-zinc-100 dark:border-zinc-800 flex justify-center shrink-0">
+                <button 
+                  disabled={selectedPlaylistItems.length === 0}
+                  onClick={addSelectedPlaylistItems}
+                  className="px-12 py-4 rounded-2xl bg-zinc-900 dark:bg-white text-white dark:text-black font-black text-lg shadow-xl hover:scale-105 active:scale-95 transition-all disabled:opacity-30 flex items-center gap-3"
+                >
+                  {selectedPlaylistItems.length}개 후보로 시작하기
+                  <ArrowRight className="w-5 h-5" />
+                </button>
+              </div>
+            </motion.div>
           </div>
         )}
       </AnimatePresence>
