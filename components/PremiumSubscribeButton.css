@@ -1,0 +1,71 @@
+/* PremiumSubscribeButton.css */
+
+@keyframes gradient {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+@keyframes crownFloat {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+}
+
+.premium-btn {
+  width: 100%;
+  max-width: 220px;
+  height: 44px;
+  border: none;
+  border-radius: 40px;
+  background: linear-gradient(to right, #bf953f, #fcf6ba, #b38728, #fbf5b7, #aa771c);
+  background-size: 200% 200%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  font-size: 0.85rem;
+  color: rgb(75, 50, 0); /* Slightly darker for better contrast */
+  font-weight: 800;
+  cursor: pointer;
+  position: relative;
+  z-index: 2;
+  transition: all 0.5s ease;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+}
+
+.premium-btn:hover {
+  transform: scale(0.96);
+  animation: gradient 3s ease infinite;
+  background-position: right;
+  box-shadow: 0 0 20px rgba(189, 149, 63, 0.6);
+}
+
+/* Dark mode adjustment */
+.dark .premium-btn {
+  box-shadow: 0 0 15px rgba(189, 149, 63, 0.4);
+}
+
+.dark .premium-btn:hover {
+  box-shadow: 0 0 25px rgba(189, 149, 63, 0.7);
+}
+
+.premium-logo-icon {
+  width: 1.2em;
+  height: 1.2em;
+  fill: rgb(75, 50, 0);
+  transition: transform 0.3s ease;
+}
+
+.premium-btn:hover .premium-logo-icon {
+  animation: crownFloat 2s ease-in-out infinite;
+}

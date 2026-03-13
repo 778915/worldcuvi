@@ -1,0 +1,121 @@
+/* BoosterStatusButton.css */
+.status-button {
+  --round: 0.5rem;
+  cursor: pointer;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  padding: 6px 12px;
+  border-radius: var(--round);
+  border: none;
+  outline: none;
+  min-width: 80px;
+  height: 32px;
+}
+
+/* 0개: 회색조 */
+.status-button.count-0 {
+  background: #e5e7eb;
+  color: #9ca3af;
+  cursor: default;
+}
+.dark .status-button.count-0 {
+  background: #27272a;
+  color: #52525b;
+}
+
+/* 1~3개: 은은한 테마색 */
+.status-button.count-low {
+  background: linear-gradient(0deg, var(--accent-1), var(--accent-1));
+  color: white;
+}
+
+/* 5개 이상: 강렬한 글로우 + 진동 */
+.status-button.count-high {
+  background: radial-gradient(
+      65.28% 65.28% at 50% 100%,
+      color-mix(in srgb, var(--accent-1) 80%, transparent) 0%,
+      transparent 100%
+    ),
+    linear-gradient(0deg, var(--accent-1), var(--accent-1));
+  color: white;
+  box-shadow: 0 0 15px var(--accent-1);
+  animation: booster-pulse 2s infinite;
+}
+
+@keyframes booster-pulse {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 15px var(--accent-1); }
+  50% { transform: scale(1.02); box-shadow: 0 0 25px var(--accent-1); }
+}
+
+.status-button::before {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  background: linear-gradient(
+    177.95deg,
+    rgba(255, 255, 255, 0.2) 0%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  border-radius: calc(var(--round) - 1px);
+  z-index: 0;
+}
+
+.status-button.count-0::before {
+  opacity: 0.5;
+}
+
+.status-inner {
+  z-index: 2;
+  gap: 4px;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.status-icon {
+  width: 14px;
+  height: 14px;
+}
+
+.count-high .status-icon {
+  filter: drop-shadow(0 0 4px white);
+}
+
+/* 파티클 공통 */
+.status-points {
+  overflow: hidden;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  position: absolute;
+  z-index: 1;
+}
+
+.status-point {
+  bottom: -5px;
+  position: absolute;
+  animation: status-float infinite ease-in-out;
+  width: 2px;
+  height: 2px;
+  background-color: #fff;
+  border-radius: 9999px;
+  opacity: 0.8;
+}
+
+@keyframes status-float {
+  0% { transform: translateY(0); opacity: 1; }
+  85% { opacity: 0; }
+  100% { transform: translateY(-40px); opacity: 0; }
+}
+
+/* 속도 조절: 5개 이상일 때 1.5배 빠름 */
+.count-high .status-point {
+  animation-duration: inherit; /* 개별 요소에서 정의 */
+}

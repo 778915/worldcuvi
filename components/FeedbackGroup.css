@@ -1,0 +1,80 @@
+/* FeedbackGroup.css */
+
+.feedback-container {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+.feedback-item {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+  user-select: none;
+}
+
+.feedback-radio {
+  display: none;
+}
+
+.feedback-label {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #71717a; /* zinc-500 */
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+}
+
+.feedback-item:hover .feedback-label {
+  color: var(--accent-1);
+}
+
+.feedback-icon {
+  width: 27px;
+  height: 27px;
+  transition: transform 0.2s ease-in-out;
+}
+
+.feedback-item:hover .feedback-icon {
+  transform: scale(1.3);
+}
+
+/* Like Active State */
+.feedback-radio:checked[value="like"] ~ .feedback-label {
+  color: var(--accent-1);
+}
+
+.feedback-radio:checked[value="like"] ~ .feedback-label .feedback-icon {
+  animation: keyframes-fill 0.2s ease-in-out;
+}
+
+/* Unlike Active State */
+.feedback-radio:checked[value="unlike"] ~ .feedback-label {
+  color: #94a3b8; /* slate-400 */
+}
+
+.feedback-radio:checked[value="unlike"] ~ .feedback-label .feedback-icon {
+  animation: keyframes-fill 0.2s ease-in-out;
+}
+
+@keyframes keyframes-fill {
+  0% {
+    transform: scale(0);
+    opacity: 0;
+  }
+  50% {
+    transform: scale(1.2) rotate(-10deg);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}

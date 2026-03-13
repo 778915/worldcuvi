@@ -1,0 +1,54 @@
+/* FeedbackSection.css */
+
+.rolling-number-container {
+  overflow: hidden;
+  height: 1.2em;
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  vertical-align: baseline;
+  position: relative;
+}
+
+.rolling-number-list {
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.rolling-digit {
+  height: 1em;
+  line-height: 1;
+}
+
+.feedback-tooltip {
+  pointer-events: auto;
+  filter: drop-shadow(0 4px 12px rgba(0,0,0,0.5));
+}
+
+.feedback-tooltip::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border-width: 8px;
+  border-style: solid;
+  border-color: #18181b transparent transparent transparent; /* zinc-950 */
+}
+
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+/* Dark Mode Visibility Fixes */
+.dark .detail-photo-container {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 0 40px rgba(0, 0, 0, 0.5);
+}
+
+.dark .feedback-count-label {
+  color: #f8fafc; /* slate-50 (near white) */
+  opacity: 0.9 !important;
+}
